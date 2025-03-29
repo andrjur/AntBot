@@ -1,12 +1,19 @@
+import json
 import aiosqlite
 import os
 import logging
+
+from src.utils.courses import verify_code
 
 logger = logging.getLogger(__name__)
 DB_PATH = "data/bot.db"
 
 async def init_db():
+    logger.info("Initializing database...")
+    os.makedirs('data', exist_ok=True)
+    
     async with aiosqlite.connect(DB_PATH) as db:
+        # Create base tables
         await db.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -15,6 +22,7 @@ async def init_db():
             )
         ''')
         
+        # Create User Courses table
         await db.execute('''
             CREATE TABLE IF NOT EXISTS user_courses (
                 user_id INTEGER,
@@ -26,62 +34,12 @@ async def init_db():
             )
         ''')
         
-        await db.commit()
-    logger.info("Initializing database...")
-    os.makedirs('data', exist_ok=True)
-    
-    async with aiosqlite.connect(DB_PATH) as db:
-        # First, check if the column exists
-        cursor = await db.execute('''
-            SELECT name FROM pragma_table_info('user_courses') 
-            WHERE name='current_lesson'
-        ''')
-        column_exists = await cursor.fetchone()
-        
-        # Create base tables
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                user_id INTEGER PRIMARY KEY,
-                name TEXT NOT NULL,
-                phone TEXT,
-                registration_date DATETIME,
-                birthday DATE,
-                referral_count INTEGER DEFAULT 0
-            )
-        ''')
-        
-        # Create Courses table
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS courses (
-                course_id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                code_word TEXT NOT NULL,
-                price_rub INTEGER,
-                price_tokens INTEGER,
-                type TEXT CHECK(type IN ('main', 'auxiliary')),
-                description TEXT
-            )
-        ''')
-        
-        # Create User Courses table
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS user_courses (
-                user_id INTEGER REFERENCES users(user_id),
-                course_id TEXT REFERENCES courses(course_id),
-                tariff TEXT CHECK(tariff IN ('premium', 'self_check')),
-                progress INTEGER DEFAULT 0,
-                activated_at DATETIME,
-                PRIMARY KEY (user_id, course_id)
-            )
-        ''')
-        
         # Create Homeworks table
-        # In init_db() homeworks table update
         await db.execute('''
             CREATE TABLE IF NOT EXISTS homeworks (
                 hw_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER REFERENCES users(user_id),
-                course_id TEXT REFERENCES courses(course_id),
+                course_id TEXT NOT NULL,
                 lesson INTEGER,
                 status TEXT CHECK(status IN ('pending', 'approved', 'declined')),
                 submission_time DATETIME,
@@ -91,34 +49,6 @@ async def init_db():
                 admin_id INTEGER
             )
         ''')
-        
-        # Add new table for user states
-        await db.execute('''
-            CREATE TABLE IF NOT EXISTS user_states (
-                user_id INTEGER NOT NULL,
-                course_id TEXT NOT NULL,
-                current_state TEXT CHECK(current_state IN (
-                    'awaiting_homework', 'lesson_completed', 
-                    'waiting_next_lesson', 'course_completed'
-                )),
-                current_lesson INTEGER DEFAULT 1,
-                last_action DATETIME DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (user_id, course_id),
-                FOREIGN KEY (course_id) REFERENCES courses(course_id)
-            )
-        ''')
-        
-        # Add progress tracking to user_courses
-        # Only add the column if it doesn't exist
-        if not column_exists:
-            try:
-                await db.execute('''
-                    ALTER TABLE user_courses
-                    ADD COLUMN current_lesson INTEGER DEFAULT 1
-                ''')
-                logger.info("Added current_lesson column to user_courses")
-            except Exception as e:
-                logger.warning(f"Could not add current_lesson column: {e}")
         
         await db.commit()
         logger.info("Database initialization completed")
@@ -262,6 +192,33 @@ async def get_user_info(user_id: int) -> str:
         
         return (f"👤 {name}\n"
                 f"📚 Курс: {course.get('name', 'Не активирован')}\n"
-                f"📝 Текущий урок: {lesson or 1}")
+                f"📝 Текущий урок: {lesson}")
     else:
         return f"👤 {name}\n📚 Курс не активирован"
+
+async def verify_course_code(code: str, user_id: int) -> tuple[bool, str]:
+    """Verify course activation code and activate course for user"""
+    success, course_id = verify_code(code)
+    if not success:
+        return False, ""
+        
+    # Check if user already has this course
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute('''
+            SELECT 1 FROM user_courses 
+            WHERE user_id = ? AND course_id = ?
+        ''', (user_id, course_id))
+        
+        if await cursor.fetchone():
+            return False, ""  # User already enrolled
+            
+        # Activate course for user
+        await db.execute('''
+            INSERT INTO user_courses (user_id, course_id, current_lesson)
+            VALUES (?, ?, 1)
+        ''', (user_id, course_id))
+        await db.commit()
+        
+    return True, course_id
+    
+    return False, ""  # Code not found

@@ -1,37 +1,23 @@
 import json
-import aiosqlite
-from src.utils.db import DB_PATH
+import logging
+from typing import Tuple
 
-async def verify_course_code(code: str, user_id: int) -> tuple[bool, str, str]:
-    with open('src/data/courses.json', 'r', encoding='utf-8') as f:
-        courses = json.load(f)
+logger = logging.getLogger(__name__)
+
+def load_courses():
+    """Load courses from JSON file"""
+    with open('data/courses.json', 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+def verify_code(code: str) -> Tuple[bool, str]:
+    """Verify course code and return course_id if valid"""
+    courses = load_courses()
     
     for course_id, course in courses.items():
-        if not course['is_active']:
+        if not course.get('is_active', False):
             continue
             
-        for tier, tier_data in course['tiers'].items():
-            if not tier_data['is_active']:
-                continue
-                
-            if tier_data['code'].lower() == code.lower():
-                # Check if user already has this course
-                async with aiosqlite.connect(DB_PATH) as db:
-                    cursor = await db.execute('''
-                        SELECT 1 FROM user_courses 
-                        WHERE user_id = ? AND course_id = ?
-                    ''', (user_id, course_id))
-                    
-                    if await cursor.fetchone():
-                        return False, "", ""
-                    
-                    # Activate course for user
-                    await db.execute('''
-                        INSERT INTO user_courses (user_id, course_id, tier)
-                        VALUES (?, ?, ?)
-                    ''', (user_id, course_id, tier))
-                    await db.commit()
-                    
-                return True, course_id, tier
-                
-    return False, "", ""
+        if course['code'].lower() == code.lower():
+            return True, course_id
+            
+    return False, ""
