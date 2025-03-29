@@ -1,0 +1,43 @@
+{
+  "femininity": {
+    "name": "Женственность",
+    "description": "Курс по развитию женственности",
+    "is_active": true,
+    "tiers": {
+      "self_check": {
+        "name": "Без проверки ДЗ",
+        "price": 1500,
+        "code": "роза",
+        "is_active": true
+      },
+      "admin_check": {
+        "name": "С проверкой ДЗ",
+        "price": 3000,
+        "code": "фиалка",
+        "is_active": true
+      },
+      "premium": {
+        "name": "Премиум",
+        "price": 5000,
+        "code": "лепесток",
+        "is_active": true,
+        "includes": ["consultations", "priority_support"]
+      }
+    },
+    "lessons": {
+      "1": {
+        "title": "Введение",
+        "materials": [
+          {
+            "type": "text",
+            "content": "data/courses/femininity/lesson1/intro.txt"
+          },
+          {
+            "type": "video",
+            "path": "data/courses/femininity/lesson1/demo.mp4"
+          }
+        ]
+      }
+    }
+  }
+}

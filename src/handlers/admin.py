@@ -1,4 +1,11 @@
-from keyboards.admin import get_hw_review_kb
+from src.keyboards.admin import get_hw_review_kb
+from src.utils.db import update_tokens
+from aiogram import Router, F
+from aiogram.filters import Command
+from aiogram.types import Message, CallbackQuery
+import os
+
+router = Router()
 
 async def notify_admins(hw_id: int, user_id: int, file_id: str):
     admin_chat = os.getenv('ADMIN_GROUP')
