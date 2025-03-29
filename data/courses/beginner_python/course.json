@@ -1,0 +1,91 @@
+{
+  "course_id": "PYTHON101",
+  "name": "Python для начинающих",
+  "code_word": "SNAKECODE",
+  "price_rub": 2990,
+  "price_tokens": 150,
+  "type": "main",
+  "description": "Базовый курс по программированию на Python",
+  "lessons": [
+    {
+      "lesson": 1,
+      "lesson_name": "Введение в Python",
+      "description": "Основы синтаксиса Python",
+      "delay_hours": 24,
+      "content": [
+        {
+          "type": "video",
+          "url": "https://example.com/python_intro.mp4",
+          "file_id": "BAACAgIAAxkBAAIBYGWXrXxOyJ6VfNcAEQEAAQz3ZC4NM00AAikVAALhLwABS8gBAAdqQrZMMwQ",
+          "caption": "Вводное видео"
+        },
+        {
+          "type": "document",
+          "url": "https://example.com/cheatsheet.pdf",
+          "file_id": "BQACAgIAAxkBAAIBYmWXrZvD1aE0sxcCEQEAAQxR4QABBSRNAAIpFQAC4S8AAUvIAQAHakK2TDME",
+          "caption": "Шпаргалка по синтаксису"
+        }
+      ]
+    },
+    {
+      "lesson": 2,
+      "lesson_name": "Типы данных",
+      "description": "Работа с основными типами данных",
+      "delay_hours": 24,
+      "content": [
+        {
+          "type": "video",
+          "url": "https://example.com/data_types.mp4",
+          "file_id": "BAACAgIAAxkBAAIBZGWXrbz8nX7HpJYCEQEAAQw5jYABBU0AAikVAALhLwABS8gBAAdqQrZMMwQ",
+          "caption": "Типы данных в Python"
+        },
+        {
+          "type": "photo",
+          "url": "https://example.com/type_hierarchy.jpg",
+          "file_id": "AgACAgIAAxkBAAIBZmWXrdKhzX_0nxcCEQEAAQx1tSABBU0AAikVAALhLwABS8gBAAdqQrZMMwQ",
+          "caption": "Иерархия типов"
+        }
+      ]
+    },
+    {
+      "lesson": 3,
+      "lesson_name": "Функции",
+      "description": "Создание и использование функций",
+      "delay_hours": 48,
+      "content": [
+        {
+          "type": "video",
+          "url": "https://example.com/functions.mp4",
+          "file_id": "BAACAgIAAxkBAAIBaGWXre9aHwABTYJXAhEBAAGMZ7MAASlNAAIpFQAC4S8AAUvIAQAHakK2TDME",
+          "caption": "Основы функций"
+        },
+        {
+          "type": "document",
+          "url": "https://example.com/functions_examples.py",
+          "file_id": "BQACAgIAAxkBAAIBamWXrgABBS9q3H8XAhEBAAGMvq8AAQVNAAIpFQAC4S8AAUvIAQAHakK2TDME",
+          "caption": "Примеры кода"
+        }
+      ]
+    },
+    {
+      "lesson": 4,
+      "lesson_name": "Итоговый проект",
+      "description": "Создание простого приложения",
+      "delay_hours": 72,
+      "content": [
+        {
+          "type": "video",
+          "url": "https://example.com/final_project.mp4",
+          "file_id": "BAACAgIAAxkBAAIBbGWXriT4lH5gAhcCEQEAAQyWswABBU0AAikVAALhLwABS8gBAAdqQrZMMwQ",
+          "caption": "Разбор финального проекта"
+        },
+        {
+          "type": "document",
+          "url": "https://example.com/project_template.zip",
+          "file_id": "BQACAgIAAxkBAAIBbmWXrkL0lH5gAhcCEQEAAQxmsxcBBU0AAikVAALhLwABS8gBAAdqQrZMMwQ",
+          "caption": "Шаблон проекта"
+        }
+      ]
+    }
+  ]
+}
