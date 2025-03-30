@@ -13,29 +13,24 @@ async def init_db():
     os.makedirs('data', exist_ok=True)
     
     async with aiosqlite.connect(DB_PATH) as db:
-        # Create base tables
-        await db.execute('''
+        # Create all tables in one transaction
+        await db.executescript('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
                 registration_date DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Create User Courses table
-        await db.execute('''
+            );
+            
             CREATE TABLE IF NOT EXISTS user_courses (
                 user_id INTEGER,
                 course_id TEXT NOT NULL,
+                version_id TEXT NOT NULL DEFAULT 'basic',
                 current_lesson INTEGER DEFAULT 1,
                 activation_date DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY(user_id) REFERENCES users(user_id),
-                PRIMARY KEY(user_id, course_id)
-            )
-        ''')
-        
-        # Create Homeworks table
-        await db.execute('''
+                PRIMARY KEY(user_id, course_id, version_id)
+            );
+            
             CREATE TABLE IF NOT EXISTS homeworks (
                 hw_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER REFERENCES users(user_id),
@@ -47,9 +42,16 @@ async def init_db():
                 admin_comment TEXT,
                 file_id TEXT NOT NULL,
                 admin_id INTEGER
-            )
+            );
+            
+            CREATE TABLE IF NOT EXISTS user_states (
+                user_id INTEGER,
+                current_state TEXT,
+                current_course TEXT,
+                current_lesson INTEGER,
+                PRIMARY KEY(user_id)
+            );
         ''')
-        
         await db.commit()
         logger.info("Database initialization completed")
 
@@ -178,47 +180,71 @@ async def get_user_info(user_id: int) -> str:
         name = user_data[0]
         
         cursor = await db.execute('''
-            SELECT course_id, current_lesson 
+            SELECT course_id, version_id, current_lesson 
             FROM user_courses 
             WHERE user_id = ?
         ''', (user_id,))
         course_data = await cursor.fetchone()
         
     if course_data:
-        course_id, lesson = course_data
+        course_id, version_id, lesson = course_data
         with open('data/courses.json', 'r', encoding='utf-8') as f:
             courses = json.load(f)
         course = courses.get(course_id, {})
+        version = next((v for v in course.get('versions', []) if v['id'] == version_id), {})
         
         return (f"👤 {name}\n"
                 f"📚 Курс: {course.get('name', 'Не активирован')}\n"
+                f"📊 Тариф: {version.get('name', 'Базовый')}\n"
                 f"📝 Текущий урок: {lesson}")
     else:
         return f"👤 {name}\n📚 Курс не активирован"
 
-async def verify_course_code(code: str, user_id: int) -> tuple[bool, str]:
-    """Verify course activation code and activate course for user"""
-    success, course_id = verify_code(code)
-    if not success:
-        return False, ""
+async def verify_course_code(code: str, user_id: int) -> tuple[bool, str, str]:
+    """
+    Verify course code and return (success, course_id, version_id)
+    """
+    with open('data/courses.json', 'r', encoding='utf-8') as f:
+        courses = json.load(f)
         
-    # Check if user already has this course
+    for course_id, course in courses.items():
+        for version in course['versions']:
+            if version['code'] == code:
+                # Check if user already has this course
+                async with aiosqlite.connect(DB_PATH) as db:
+                    cursor = await db.execute('''
+                        SELECT 1 FROM user_courses 
+                        WHERE user_id = ? AND course_id = ? AND version_id = ?
+                    ''', (user_id, course_id, version['id']))
+                    
+                    if await cursor.fetchone():
+                        logger.warning(f"User {user_id} already enrolled in course {course_id}:{version['id']}")
+                        return False, None, None  # User already enrolled
+                        
+                    # Activate course for user
+                    await db.execute('''
+                        INSERT INTO user_courses (user_id, course_id, version_id, current_lesson)
+                        VALUES (?, ?, ?, 1)
+                    ''', (user_id, course_id, version['id']))
+                    await db.commit()
+                    logger.info(f"Enrolled user {user_id} in course {course_id}:{version['id']}")
+                    return True, course_id, version['id']
+                
+    logger.warning(f"Invalid course code: {code}")
+    return False, None, None
+
+
+async def optimize_db():
     async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute('''
-            SELECT 1 FROM user_courses 
-            WHERE user_id = ? AND course_id = ?
-        ''', (user_id, course_id))
-        
-        if await cursor.fetchone():
-            return False, ""  # User already enrolled
+        await db.executescript('''
+            CREATE INDEX IF NOT EXISTS idx_user_courses_user 
+            ON user_courses(user_id);
             
-        # Activate course for user
-        await db.execute('''
-            INSERT INTO user_courses (user_id, course_id, current_lesson)
-            VALUES (?, ?, 1)
-        ''', (user_id, course_id))
+            CREATE INDEX IF NOT EXISTS idx_homeworks_user 
+            ON homeworks(user_id, course_id);
+            
+            CREATE INDEX IF NOT EXISTS idx_user_states_user 
+            ON user_states(user_id);
+        ''')
         await db.commit()
-        
-    return True, course_id
     
-    return False, ""  # Code not found

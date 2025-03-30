@@ -2,22 +2,53 @@
   "femininity": {
     "name": "Женственность",
     "description": "Курс по развитию женственности",
-    "code": "роза",
     "is_active": true,
-    "lessons": {
-      "1": {
-        "title": "Введение",
-        "materials": [
-          {
-            "type": "text",
-            "content": "data/courses/femininity/lesson1/intro.txt"
-          },
-          {
-            "type": "video",
-            "path": "data/courses/femininity/lesson1/demo.mp4"
-          }
+    "next_lesson_delay": 24,
+    "versions": [
+      {
+        "id": "self_check",
+        "name": "Базовый (самопроверка)",
+        "code": "роза",
+        "self_approved": true,
+        "price": {
+          "rub": 1500
+        },
+        "features": [
+          "Доступ к материалам",
+          "Самостоятельная проверка заданий",
+          "Чат поддержки"
+        ]
+      },
+      {
+        "id": "admin_check",
+        "name": "Стандарт (с проверкой)",
+        "code": "фиалка",
+        "self_approved": false,
+        "price": {
+          "rub": 3000
+        },
+        "features": [
+          "Проверка домашних заданий",
+          "Обратная связь от кураторов",
+          "Доступ к закрытому чату"
+        ]
+      },
+      {
+        "id": "premium",
+        "name": "Премиум",
+        "code": "лепесток",
+        "self_approved": false,
+        "price": {
+          "rub": 5000,
+          "tokens": 500
+        },
+        "features": [
+          "Индивидуальная поддержка",
+          "Расширенные материалы",
+          "Бонусные уроки",
+          "VIP чат"
         ]
       }
-    }
+    ]
   }
 }
