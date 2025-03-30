@@ -1,8 +1,9 @@
 import asyncio
 import logging
+from src.handlers import admin
 from aiogram import Bot, Dispatcher
-from dotenv import load_dotenv
-from src.utils.db import init_db  # Restore 'src.'
+from src.config import BOT_TOKEN  # Import from config instead
+from src.utils.db import init_db, test_admin_group  # Add this import
 import os
 import sys
 import signal
@@ -20,12 +21,11 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
-load_dotenv('.env')
 
-token = os.getenv('BOT_TOKEN')
-if not token:
+if not BOT_TOKEN:
     logger.error("BOT_TOKEN not found in environment variables")
     sys.exit(1)
+    
 dp = Dispatcher()
 
 LOCK_FILE = "bot.lock"
@@ -54,18 +54,29 @@ async def main():
         await init_db()
         logger.info("Database initialized successfully")
         
-        from src.handlers import user, admin  # Restore 'src.'
+        from src.handlers import user, admin
         dp.include_router(user.router)
         dp.include_router(admin.router)
         
+        bot = Bot(token=BOT_TOKEN)
+        
+        # Test admin group communication with timeout
+        logger.info("Testing admin group communication...")
+        try:
+            async with asyncio.timeout(10):  # 10 seconds timeout
+                if not await test_admin_group(bot):
+                    logger.error("Failed to verify admin group communication")
+                    sys.exit(1)
+        except asyncio.TimeoutError:
+            logger.error("Admin group test timed out")
+            sys.exit(1)
+            
         logger.info("Bot started successfully")
-        bot = Bot(token=token)
         await dp.start_polling(bot)
     except Exception as e:
         logger.error(f"Error during bot startup: {e}", exc_info=True)
         raise
     finally:
-        # Remove lock file on exit
         if os.path.exists(LOCK_FILE):
             os.remove(LOCK_FILE)
 
