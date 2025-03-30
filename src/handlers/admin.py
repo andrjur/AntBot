@@ -7,6 +7,7 @@ import os
 import logging
 from src.utils.db import handle_homework_approval, DB_PATH, update_tokens
 import aiosqlite
+from src.config import get_lesson_delay, is_test_mode
 
 router = Router()
 
@@ -145,29 +146,35 @@ async def approve_homework(callback: CallbackQuery, bot: Bot):
         )
         
         if success:
+            # Get next lesson time
+            async with aiosqlite.connect(DB_PATH) as db:
+                cursor = await db.execute(f'''
+                    SELECT datetime('now', ?)
+                ''', (get_lesson_delay(),))
+                next_time = await cursor.fetchone()
+                next_time_str = next_time[0].replace('T', ' ') if next_time else None
+
             # Award tokens
             await update_tokens(user_id, 10, "homework_approval")
             
-            # Notify admin - use caption for photo messages
+            # Notify admin
             original_text = callback.message.caption or callback.message.text or "Домашняя работа"
             new_text = f"{original_text}\n\n✅ Домашняя работа принята!"
             
             if callback.message.photo:
-                await callback.message.edit_caption(
-                    caption=new_text,
-                    reply_markup=None
-                )
+                await callback.message.edit_caption(caption=new_text, reply_markup=None)
             else:
-                await callback.message.edit_text(
-                    text=new_text,
-                    reply_markup=None
-                )
+                await callback.message.edit_text(text=new_text, reply_markup=None)
             
-            # Notify user
+            # Notify user with time info
+            test_mode_text = "🔧 [ТЕСТОВЫЙ РЕЖИМ] " if is_test_mode() else ""
+            delay_text = "через 5 минут" if is_test_mode() else "через 24 часа"
+            
             await bot.send_message(
                 user_id,
-                "✅ Ваша домашняя работа принята!\n"
-                "Следующий урок будет доступен через 24 часа."
+                f"{test_mode_text}✅ Ваша домашняя работа принята!\n"
+                f"⏰ Следующий урок будет доступен {delay_text}\n"
+                f"📅 Точное время: {next_time_str}"
             )
         else:
             await callback.answer("❌ Ошибка при обработке", show_alert=True)

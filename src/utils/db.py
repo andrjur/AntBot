@@ -4,7 +4,7 @@ import os
 import logging
 
 from src.utils.courses import verify_code
-from src.config import ADMIN_GROUP_ID
+from src.config import ADMIN_GROUP_ID, get_lesson_delay
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -327,70 +327,79 @@ async def get_user(user_id: int):
         )
         return await cursor.fetchone()
 
-# Remove the second verify_course_code function (around line 400)
-# And fix get_user_info function:
-
 async def get_user_info(user_id: int) -> str:
-    async with aiosqlite.connect(DB_PATH) as db:
-        # First get basic user info
-        cursor = await db.execute('''
-            SELECT 
-                u.name,
-                uc.course_id,
-                uc.version_id,
-                uc.current_lesson
-            FROM users u
-            LEFT JOIN user_courses uc ON u.user_id = uc.user_id
-            WHERE u.user_id = ?
-        ''', (user_id,))
-        user_data = await cursor.fetchone()
-        
-        if not user_data:
-            return "User not found"
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            # First get basic user info
+            cursor = await db.execute('''
+                SELECT 
+                    u.name,
+                    uc.course_id,
+                    uc.version_id,
+                    uc.current_lesson
+                FROM users u
+                LEFT JOIN user_courses uc ON u.user_id = uc.user_id
+                WHERE u.user_id = ?
+            ''', (user_id,))
+            user_data = await cursor.fetchone()
             
-        name, course_id, version_id, lesson = user_data
-        
-        if not course_id:
-            return f"👤 {name}\n📚 Курс не активирован"
+            if not user_data:
+                return "User not found"
+                
+            name, course_id, version_id, lesson = user_data
             
-        # Get course info
-        with open('data/courses.json', 'r', encoding='utf-8') as f:
-            courses = json.load(f)
-        course = courses.get(course_id, {})
-        version = next((v for v in course.get('versions', []) if v['id'] == version_id), {})
-        
-        # Get homework status
-        cursor = await db.execute('''
-            SELECT status, submission_time, next_lesson_at
-            FROM homeworks 
-            WHERE user_id = ? AND course_id = ? AND lesson = ?
-            ORDER BY submission_time DESC LIMIT 1
-        ''', (user_id, course_id, lesson))
-        hw_data = await cursor.fetchone()
-        
-        status_msg = "⏳ Ожидаю отправку материалов урока"
-        if hw_data:
-            hw_status, sent_at, next_lesson = hw_data
-            if hw_status == 'pending':
-                status_msg = "💌 Домашка на проверке"
-            elif hw_status == 'approved':
-                if next_lesson:
+            if not course_id:
+                return f"👤 {name}\n📚 Курс не активирован"
+                
+            # Get course info
+            with open('data/courses.json', 'r', encoding='utf-8') as f:
+                courses = json.load(f)
+            course = courses.get(course_id, {})
+            version = next((v for v in course.get('versions', []) if v['id'] == version_id), {})
+            
+            # Get homework status
+            cursor = await db.execute('''
+                SELECT status, submission_time, next_lesson_at
+                FROM homeworks 
+                WHERE user_id = ? AND course_id = ? AND lesson = ?
+                ORDER BY submission_time DESC LIMIT 1
+            ''', (user_id, course_id, lesson))
+            hw_data = await cursor.fetchone()
+            
+            status_msg = "⏳ Ожидаю отправку материалов урока"
+            if hw_data:
+                hw_status, sent_at, next_lesson = hw_data
+                if hw_status == 'pending':
+                    status_msg = "💌 Домашка на проверке"
+                elif hw_status == 'approved' and next_lesson:
                     from datetime import datetime
                     next_time = datetime.fromisoformat(next_lesson)
                     if datetime.now() < next_time:
                         time_left = next_time - datetime.now()
-                        status_msg = f"⏳ Следующий урок через {time_left.days}д {time_left.hours}ч"
+                        days = time_left.days
+                        hours = time_left.seconds // 3600
+                        minutes = (time_left.seconds % 3600) // 60
+                        
+                        if days > 0:
+                            status_msg = f"⏳ Следующий урок через {days}д {hours}ч"
+                        elif hours > 0:
+                            status_msg = f"⏳ Следующий урок через {hours}ч {minutes}м"
+                        else:
+                            status_msg = f"⏳ Следующий урок через {minutes}м"
                     else:
-                        status_msg = "✅ Можно получить следующий урок"
-                else:
-                    status_msg = "✅ Домашка принята"
-        
-        return (f"👤 {name}\n"
-                f"📚 Курс: {course.get('name', 'Неизвестный курс')}\n"
-                f"📊 Тариф: {version.get('name', 'Базовый')}\n"
-                f"📝 Урок: {lesson}\n"
-                f"{status_msg}")
-        
+                        status_msg = "✅ Можно начинать следующий урок"
+                elif hw_status == 'declined':
+                    status_msg = "❌ Домашка отклонена"
+            
+            return (f"👤 {name}\n"
+                    f"📚 Курс: {course.get('name', 'Неизвестный курс')}\n"
+                    f"📊 Тариф: {version.get('name', 'Базовый')}\n"
+                    f"📝 Урок: {lesson}\n"
+                    f"{status_msg}")
+                    
+    except Exception as e:
+        logger.error(f"Error in get_user_info: {e}")
+        return "Error getting user info"
 
 async def optimize_db():
     async with aiosqlite.connect(DB_PATH) as db:
@@ -466,23 +475,22 @@ async def test_admin_group(bot: Bot) -> bool:
 
 
 async def handle_homework_approval(user_id: int, course_id: str, lesson: int, status: str, admin_id: int, comment: str = None) -> bool:
-    """Handle homework approval/rejection"""
     try:
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute('BEGIN TRANSACTION')
             try:
-                # Update homework status
-                await db.execute('''
+                await db.execute(f'''
                     UPDATE homeworks 
                     SET status = ?, 
                         approval_time = datetime('now'),
+                        next_lesson_at = datetime('now', ?),
                         admin_id = ?,
                         admin_comment = ?
                     WHERE user_id = ? 
                         AND course_id = ? 
                         AND lesson = ?
                         AND status = 'pending'
-                ''', (status, admin_id, comment, user_id, course_id, lesson))
+                ''', (status, get_lesson_delay(), admin_id, comment, user_id, course_id, lesson))
                 
                 if status == 'approved':
                     # Set next lesson availability time (24 hours from now)
