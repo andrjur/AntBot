@@ -225,38 +225,37 @@ async def verify_course_code(code: str, user_id: int) -> tuple[bool, str]:
 
 
 
-async def safe_db_operation(operation: str, params: tuple = None) -> Any:
-    """Safe database operation wrapper"""
-    operation_type = operation.strip().upper().split()[0]
-    
+async def safe_db_operation(query: str, params: tuple = None, fetch_one: bool = False):
+    """Safely execute a database operation with proper error handling"""
+    db = None
     try:
-        db = await get_db_connection()
-        logger.debug(f"🔄 Выполнение {operation_type}: {operation[:100]}...")
+        db = await aiosqlite.connect(DB_PATH)
+        cursor = await db.execute(query, params) if params else await db.execute(query)
+        await db.commit()
         
-        try:
-            start_time = datetime.now()
-            cursor = await db.execute(operation, params or ())
-            
-            # Для SELECT-запросов возвращаем курсор
-            if operation_type == 'SELECT':
-                result = cursor
-            else:
-                await db.commit()
-                result = cursor
-                
-            duration = (datetime.now() - start_time).total_seconds()
-            logger.debug(f"✅ {operation_type} выполнен за {duration:.3f}s")
+        # For SELECT operations, fetch the results before closing
+        if query.strip().upper().startswith("SELECT"):
+            result = await cursor.fetchone() if fetch_one else await cursor.fetchall()
+            await cursor.close()
+            await db.close()
             return result
-            
-        except SQLiteError as e:
-            await db.rollback()
-            logger.error(f"❌ Ошибка БД [{operation_type}]: {e}")
-            logger.debug(f"Параметры: {params}")
-            raise DatabaseError(f"Operation failed: {e}")
-            
+        
+        # For other operations, just close everything
+        await cursor.close()
+        await db.close()
+        return cursor
+        
     except Exception as e:
+        operation_type = "SELECT" if query.strip().upper().startswith("SELECT") else \
+                        "INSERT" if query.strip().upper().startswith("INSERT") else \
+                        "UPDATE" if query.strip().upper().startswith("UPDATE") else \
+                        "DELETE" if query.strip().upper().startswith("DELETE") else \
+                        "UNKNOWN"
+        
         logger.error(f"💥 Критическая ошибка БД [{operation_type}]: {e}")
-        raise BotError(f"Critical error: {e}")
+        if db:
+            await db.close()
+        raise
 
 async def get_db_connection():
     global _db_connection
@@ -274,11 +273,12 @@ async def close_db_connection():
 
 async def get_user(user_id: int):
     try:
-        cursor = await safe_db_operation(
+        result = await safe_db_operation(
             'SELECT * FROM users WHERE user_id = ?',
-            (user_id,)
+            (user_id,),
+            fetch_one=True
         )
-        return await cursor.fetchone()
+        return result if result else None
     except BotError:
         return None
 

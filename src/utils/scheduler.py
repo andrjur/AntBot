@@ -8,6 +8,7 @@ from aiogram import Bot
 from src.utils.db import DB_PATH, safe_db_operation, cleanup_old_scheduled_files
 from src.config import extract_delay_from_filename  # Changed from get_file_delay
 import aiosqlite
+from aiogram.types import FSInputFile  # Добавить импорт
 
 
 logger = logging.getLogger(__name__)
@@ -19,10 +20,21 @@ async def send_file(bot: Bot, user_id: int, file_path: str):
             logger.error(f"❌ 4001 File not found: {file_path}")
             return False
             
-        with open(file_path, 'r', encoding='utf-8') as f:
-            text = f.read()
-            
-        await bot.send_message(user_id, text)
+        # Определяем тип файла по расширению
+        ext = file_path.lower().split('.')[-1]
+        input_file = FSInputFile(file_path)
+        
+        if ext in ['txt', 'md']:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                text = f.read()
+            await bot.send_message(user_id, text, parse_mode=None)
+        elif ext in ['jpg', 'jpeg', 'png']:
+            await bot.send_photo(user_id, input_file)
+        elif ext in ['mp3', 'ogg']:
+            await bot.send_audio(user_id, input_file)
+        elif ext in ['mp4', 'avi']:
+            await bot.send_video(user_id, input_file)
+                
         logger.info(f"✅ 4002 File sent successfully: {file_path}")
         return True
         
@@ -30,6 +42,7 @@ async def send_file(bot: Bot, user_id: int, file_path: str):
         logger.error(f"❌ 4003 Error sending file: {e}", exc_info=True)
         return False
 
+# И в approve_homework (в admin.py) нужно вынести сообщение из цикла:
 # Паттерн для поиска задержки в имени файла (например: task_15min.txt или theory_1hour.txt)
 DELAY_PATTERN = re.compile(r'_(\d+)(min|hour)\.')
 
@@ -54,24 +67,14 @@ async def send_lesson_files(bot: Bot, user_id: int, course_id: str, lesson: int)
             logger.debug(f"📎 Attempting to send file: {full_path}")
             
             try:
-                if not os.path.exists(full_path):
-                    logger.error(f"❌ File not found: {full_path}")
-                    continue
+                if await send_file(bot, user_id, full_path):
+                    # Mark as sent
+                    await safe_db_operation('''
+                        UPDATE scheduled_files 
+                        SET sent = 1 
+                        WHERE id = ?
+                    ''', (file_id,))
                     
-                with open(full_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    
-                # Send the file content
-                await bot.send_message(user_id, content)
-                logger.info(f"✅ Successfully sent file {file_name} to user {user_id}")
-                
-                # Mark as sent
-                await safe_db_operation('''
-                    UPDATE scheduled_files 
-                    SET sent = 1 
-                    WHERE id = ?
-                ''', (file_id,))
-                
             except Exception as e:
                 logger.error(f"❌ Error sending file {file_name}: {e}", exc_info=True)
                 
@@ -79,6 +82,8 @@ async def send_lesson_files(bot: Bot, user_id: int, course_id: str, lesson: int)
         logger.error(f"💥 Critical error in send_lesson_files: {e}", exc_info=True)
         raise
 
+# Удаляем функцию check_scheduled_files, так как её функциональность 
+# теперь полностью покрывается send_lesson_files
 async def check_and_send_lessons(bot: Bot):
     while True:
         try:
@@ -131,45 +136,6 @@ async def check_and_send_lessons(bot: Bot):
             logger.error(f"2000.7 | Scheduler error: {e}", exc_info=True)
             
         await asyncio.sleep(100)
-
-async def check_scheduled_files(bot: Bot):
-    logger.info("2000999 Starting file scheduler")
-    while True:
-        try:
-            result = await safe_db_operation('''
-                SELECT * FROM scheduled_files 
-                WHERE sent = 0 AND send_at <= datetime('now')
-            ''')
-            files = await result.fetchall()
-            
-            if files:
-                logger.info(f"2200 Found {len(files)} files ready to send")
-                for file in files:
-                    user_id = file[1]
-                    course_id = file[2]
-                    lesson = file[3]
-                    file_name = file[4]
-                    
-                    file_path = os.path.join('data', 'courses', course_id, f'lesson{lesson}', file_name)
-                    logger.info(f"2201 Sending file to user {user_id}: {file_path}")
-                    
-                    try:
-                        if await send_file(bot, user_id, file_path):
-                            await safe_db_operation('''
-                                UPDATE scheduled_files 
-                                SET sent = 1 
-                                WHERE id = ?
-                            ''', (file[0],))
-                            logger.info(f"2203 File sent successfully")
-                    except Exception as e:
-                        logger.error(f"2204 Error sending file {file_path}: {e}")
-                else:
-                    logger.debug("2205 No files ready to send")
-                    
-        except Exception as e:
-            logger.error(f"2206 Scheduler error: {e}")
-            
-        await asyncio.sleep(35)
 
 
 async def schedule_cleanup():

@@ -8,7 +8,7 @@ from src.utils.db import init_db, test_admin_group
 import os
 import sys
 import json
-from src.utils.scheduler import check_and_send_lessons, check_scheduled_files
+from src.utils.scheduler import check_and_send_lessons  # Removed check_scheduled_files
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -128,7 +128,8 @@ async def main():
 
         # Start schedulers
         asyncio.create_task(check_and_send_lessons(bot))
-        asyncio.create_task(check_scheduled_files(bot))
+        # Удаляем эту строку:
+        # asyncio.create_task(check_scheduled_files(bot))
         logger.info("All schedulers are running! 🚀")
         
         await dp.start_polling(bot)
