@@ -164,34 +164,26 @@ async def handle_photo(message: Message):
         logger.error(f"Error handling photo: {e}", exc_info=True)
         await message.reply("❌ Произошла ошибка. Попробуйте позже.")
 
-
-        state = await get_user_state(message.from_user.id)
-        logger.debug(f"Message received. State for user {message.from_user.id}: {state}")
-        
-        if state and state[0] == 'waiting_homework':
-            if message.video:
-                logger.info(f"119 Received video file_id: {message.video.file_id}")
-            await message.answer("💌 Пожалуйста, отправьте фото вашего домашнего задания")
-            return
-            
-
 @router.message()
 async def handle_message(message: Message):
     try:
-        # Get current state
         state = await get_user_state(message.from_user.id)
         logger.debug(f"Message received. State for user {message.from_user.id}: {state}")
         
         if state and state[0] == 'waiting_homework':
             if message.video:
-                logger.info(f"119 Received video file_id: {message.video.file_id}")
+                logger.info(f"Received video file_id: {message.video.file_id}")
             await message.answer("💌 Пожалуйста, отправьте фото вашего домашнего задания")
             return
             
-        # Show main menu for any other messages
         user_info = await get_user_info(message.from_user.id)
         markup = create_main_menu()
         await message.answer(user_info, reply_markup=markup)
+
+    except Exception as e:
+        logger.exception(f"Unexpected error for user {message.from_user.id}: {e}")
+        # Добавляем ответ пользователю
+        await message.answer("🆘 Произошла непредвиденная ошибка. Попробуйте позже или обратитесь в поддержку.")
 
     except sqlite3.Error as e:
         logger.exception(f"Database error for user {message.from_user.id}: {e}")

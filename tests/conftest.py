@@ -6,16 +6,18 @@ from unittest.mock import AsyncMock
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from src.utils.db import init_db, DB_PATH
+from unittest.mock import AsyncMock
 
 
-@pytest_asyncio.fixture(scope="function")
-def event_loop():
-    """Создаём луп для тестов (и немного магии ✨)"""
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    asyncio.set_event_loop(loop)
-    yield loop
-    loop.close()
+# Удаляем весь этот блок - он больше не нужен!
+# @pytest_asyncio.fixture(scope="function")
+# def event_loop():
+#     """Создаём луп для тестов (и немного магии ✨)"""
+#     policy = asyncio.get_event_loop_policy()
+#     loop = policy.new_event_loop()
+#     asyncio.set_event_loop(loop)
+#     yield loop
+#     loop.close()
 
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def setup_db():
@@ -62,10 +64,6 @@ def pytest_configure(config):
     
     # Настраиваем режим asyncio
     config.option.asyncio_mode = "strict"
-
-
-import pytest
-from unittest.mock import AsyncMock
 
 
 @pytest.fixture

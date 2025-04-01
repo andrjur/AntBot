@@ -68,3 +68,32 @@ async def test_homework_submission():
         # Проверяем результаты
         message.reply.assert_called_once_with("✅ Домашняя работа отправлена на проверку!")
         mock_set_state.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_message_error_handling():
+    """Тестируем обработку ошибок в handle_message 🐛"""
+    message = AsyncMock(spec=Message)
+    message.from_user = AsyncMock(id=999)
+    message.answer = AsyncMock()
+    
+    # Мокаем get_user_state чтобы вернуть некорректные данные
+    with patch('src.handlers.user.get_user_state', 
+              new=AsyncMock(side_effect=Exception("Test error"))):
+        
+        await handle_message(message)
+        
+        # Проверяем, что ёжик отправил сообщение об ошибке
+        message.answer.assert_called_with(
+            "🆘 Произошла непредвиденная ошибка. Попробуйте позже или обратитесь в поддержку."
+        )
+
+
+# В верхней части файла исправляем импорт
+from src.handlers.user import (
+    start_handler, 
+    process_registration, 
+    process_activation, 
+    handle_photo,
+    handle_message  # ← Добавляем забытого ёжика 🦔
+)

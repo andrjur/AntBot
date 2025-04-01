@@ -301,16 +301,18 @@ async def get_user(user_id: int):
 async def get_user_state(user_id: int) -> tuple[str, str, int]:
     """Get user state from database 🎭"""
     try:
-        cursor = await safe_db_operation(
+        # Используем новый подход без курсора
+        result = await safe_db_operation(
             '''SELECT current_state, current_course, current_lesson 
                FROM user_states 
                WHERE user_id = ?''',
-            (user_id,)
+            (user_id,),
+            fetch_one=True
         )
-        return await cursor.fetchone() or (None, None, None)
-    except BotError:
-        logger.error(f"Failed to get state for user {user_id}")
-        return None, None, None
+        return result or (None, None, None)
+    except Exception as e:
+        logger.error(f"Failed to get state for user {user_id}: {e}")
+        return (None, None, None)
 
 async def set_user_state(user_id: int, state: str, course_id: str = None, lesson: int = None) -> bool:
     """Set user state in database"""
