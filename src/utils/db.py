@@ -1,3 +1,21 @@
+__all__ = [
+    'add_user',
+    'get_user',
+    'safe_db_operation',
+    'verify_course_code',
+    'enroll_user_in_course',
+    'submit_homework',
+    'get_user_state',
+    'set_user_state',
+    'get_user_info',
+    'verify_course_enrollment',
+    'init_db',
+    'close_db_connection',
+    'get_db_connection',
+    'BotError',
+    'CourseNotFoundError',
+    'DatabaseError'
+]
 import json
 import aiosqlite
 import os
@@ -216,7 +234,8 @@ async def safe_db_operation(query: str, params: tuple = None, fetch_one: bool = 
                     result = await cursor.fetchone()
                 else:
                     result = await cursor.fetchall()
-                return result
+                await cursor.close()  # ← Важно закрывать курсор!
+                return result  # Теперь возвращаем данные, а не курсор
             
             await db.commit()
             return None
@@ -245,15 +264,38 @@ async def close_db_connection():
         _db_connection = None
         logger.info("Database connection closed")
 
+MIN_USER_FIELDS = 3  # user_id, name, registration_date
+
+async def add_user(user_id: int, name: str) -> bool:
+    """Add or update user in database 🆔"""
+    try:
+        # Use same connection pattern as other operations
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "INSERT OR REPLACE INTO users (user_id, name) VALUES (?, ?)",
+                (user_id, name)
+            )
+            await db.commit()
+            logger.info(f"User {user_id} added/updated successfully")
+            return True
+    except Exception as e:
+        logger.error(f"Error adding user {user_id}: {e}")
+        return False
+
 async def get_user(user_id: int):
     try:
-        result = await safe_db_operation(
-            'SELECT * FROM users WHERE user_id = ?',
-            (user_id,),
-            fetch_one=True
-        )
-        return result if result else None
-    except BotError:
+        # Direct connection instead of safe_db_operation for consistency
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute(
+                'SELECT * FROM users WHERE user_id = ?',
+                (user_id,)
+            )
+            result = await cursor.fetchone()
+            if result and len(result) >= MIN_USER_FIELDS:
+                return result
+            return None
+    except Exception as e:
+        logger.error(f"Ошибка при получении пользователя {user_id}: {e}")
         return None
 
 async def get_user_state(user_id: int) -> tuple[str, str, int]:
@@ -285,21 +327,6 @@ async def set_user_state(user_id: int, state: str, course_id: str = None, lesson
         return False
 
 
-# Add after get_user function
-async def add_user(user_id: int, name: str) -> bool:
-    """Add new user to database with style ✨"""
-    try:
-        await safe_db_operation(
-            '''INSERT OR REPLACE INTO users 
-               (user_id, name, registration_date)
-               VALUES (?, ?, datetime('now'))''',
-            (user_id, name)
-        )
-        logger.info(f"👋 New user added: {name} (ID: {user_id})")
-        return True
-    except BotError as e:
-        logger.error(f"Failed to add user: {e}")
-        return False
 
 
 async def init_db():
@@ -415,14 +442,14 @@ async def get_user_info(user_id: int) -> str:
     """Get user info with fancy formatting 🎨"""
     try:
         logger.debug(f"Получение информации о пользователе {user_id}")
-        cursor = await safe_db_operation('''
-            SELECT u.name, uc.course_id, uc.current_lesson, uc.version_id, uc.first_lesson_time
-            FROM users u
-            LEFT JOIN user_courses uc ON u.user_id = uc.user_id
-            WHERE u.user_id = ?
-        ''', (user_id,))
-        
-        user_data = await cursor.fetchone()
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await safe_db_operation('''
+                SELECT u.name, uc.course_id, uc.current_lesson, uc.version_id, uc.first_lesson_time
+                FROM users u
+                LEFT JOIN user_courses uc ON u.user_id = uc.user_id
+                WHERE u.user_id = ?
+            ''', (user_id,))
+            user_data = await cursor.fetchone()
         if not user_data:
             return "❌ Пользователь не найден"
         

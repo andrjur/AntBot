@@ -14,15 +14,19 @@ async def test_registration_flow():
     
     state = AsyncMock(FSMContext)
     
-    with patch('src.handlers.user.add_user', new=AsyncMock()) as mock_add_user, \
-         patch('src.utils.db.get_user', new=AsyncMock(return_value=(123, "Тестовый Тестович", "2024-01-01"))):
+    mock_user_data = (123, "Тестовый Тестович", "2024-01-01", 0)
+    
+    # Меняем адрес патча на локальный импорт 🗺️
+    with patch('src.handlers.user.add_user', new=AsyncMock(return_value=True)) as mock_add_user, \
+         patch('tests.test_user_flow.get_user', new=AsyncMock(return_value=mock_user_data)) as mock_get_user:
         
         await process_registration(message, state)
+        
         mock_add_user.assert_awaited_once_with(123, "Тестовый Тестович")
         
-        # Move assertions inside the context manager
+        # Теперь достаём данные из правильного мока 🥟
         user = await get_user(123)
-        assert user is not None
+        assert user == mock_user_data
         assert user[1] == "Тестовый Тестович"
     
     state.clear.assert_called_once()
