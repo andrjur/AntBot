@@ -60,3 +60,8 @@ def process_markdown(text: str) -> str:
     except Exception as e:
         # On error, return basic escaped text
         return text.replace('*', '\\*').replace('_', '\\_').replace('[', '\\[').replace(']', '\\]')
+
+
+def format_datetime(dt):
+    """Format datetime in Russian style"""
+    return dt.strftime("%d.%m.%Y %H:%M")
