@@ -204,22 +204,72 @@ async def enroll_user_in_course(user_id: int, course_id: str, version_id: str) -
         logger.error(f"Failed to enroll user: {e}")
         return False
 
-async def verify_course_code(code: str, user_id: int):
+# Исправляем функцию verify_course_code, чтобы она проверяла коды в базе данных
+async def verify_course_code(code: str, user_id: int) -> tuple[bool, str]:
+    """Проверка кода курса и активация"""
     try:
-        # Возвращаем данные как кортеж (course_id, name) 📌
-        result = await safe_db_operation('''
-            SELECT c.id, c.name 
-            FROM courses c
-            WHERE c.code = ? AND NOT EXISTS (
-                SELECT 1 FROM user_courses 
-                WHERE user_id = ? AND course_id = c.id
-            )
-        ''', (code, user_id))
+        code = code.strip().lower()
         
-        return await result.fetchone()  # Теперь возвращает кортеж
+        # Ищем курс по коду в базе данных
+        result = await safe_db_operation(
+            '''SELECT id FROM courses 
+               WHERE LOWER(code) = ? 
+               AND NOT EXISTS (
+                   SELECT 1 FROM user_courses 
+                   WHERE user_id = ? AND course_id = id
+               )''',
+            (code, user_id),
+            fetch_one=True
+        )
+        
+        if not result:
+            # Проверяем, активирован ли уже курс с таким кодом
+            course_exists = await safe_db_operation(
+                '''SELECT 1 FROM courses c
+                   JOIN user_courses uc ON c.id = uc.course_id
+                   WHERE LOWER(c.code) = ? AND uc.user_id = ?''',
+                (code, user_id),
+                fetch_one=True
+            )
+            
+            if course_exists:
+                return False, "Этот курс уже активирован"
+            else:
+                return False, "Неверный код курса"
+        
+        # Получаем ID курса и активируем его
+        course_id = result[0]
+        
+        # Определяем версию курса (тариф)
+        if '_' in course_id:
+            base_id, version_id = course_id.split('_', 1)
+        else:
+            base_id, version_id = course_id, 'basic'
+        
+        # Активируем курс
+        success = await enroll_user_in_course(user_id, base_id, version_id)
+        if success:
+            return True, base_id
+        else:
+            return False, "Ошибка активации курса"
+        
     except Exception as e:
-        logger.error(f"💥 Critical error in verify_course_code: {e}")
-        return None
+        logger.error(f"Course verification error: {str(e)}", exc_info=True)
+        return False, "Ошибка активации курса"
+
+# Добавляем вспомогательную функцию для проверки существующей активации
+async def check_existing_enrollment(user_id: int, course_id: str) -> bool:
+    """Проверяет, активирован ли уже курс для пользователя"""
+    try:
+        result = await safe_db_operation(
+            "SELECT 1 FROM user_courses WHERE user_id = ? AND course_id = ?",
+            (user_id, course_id),
+            fetch_one=True
+        )
+        return bool(result)
+    except Exception as e:
+        logger.error(f"Error checking enrollment: {e}")
+        return False
 
 
 
@@ -334,6 +384,19 @@ async def set_user_state(user_id: int, state: str, course_id: str = None, lesson
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript('''
+            CREATE TABLE IF NOT EXISTS courses (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                code TEXT NOT NULL UNIQUE,
+                description TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Add this index for course codes
+            CREATE INDEX IF NOT EXISTS idx_courses_code 
+                ON courses(code);
+
+            -- Existing tables below...
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -408,7 +471,67 @@ async def init_db():
                 ON scheduled_files(send_at) 
             WHERE sent = 0;
         ''')
-        await db.commit()
+        
+        # Load courses from JSON
+        try:
+            # Use relative paths that work on both Windows and Linux
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))  # Go up to project root
+            courses_path = os.path.join(base_dir, 'data', 'courses.json')
+            
+            # Check if the courses.json file exists
+            if not os.path.exists(courses_path):
+                logger.warning(f"Courses file not found at {courses_path}, trying alternative location")
+                courses_path = os.path.join(base_dir, 'data', 'courses', 'courses.json')
+            
+            logger.info(f"Loading courses from: {courses_path}")
+            
+            with open(courses_path, 'r', encoding='utf-8') as f:
+                courses = json.load(f)
+                
+                for course_id, course_data in courses.items():
+                    # Verify course structure
+                    if 'tiers' not in course_data:
+                        logger.warning(f"Skipping invalid course {course_id}")
+                        continue
+                    
+                    # Set course directory path for course-specific files
+                    course_dir = os.path.join(base_dir, 'data', 'courses', course_id)
+                    if not os.path.exists(course_dir):
+                        os.makedirs(course_dir, exist_ok=True)
+                        logger.info(f"Created course directory: {course_dir}")
+                        
+                    # Insert main course using first tier
+                    first_tier = next(iter(course_data['tiers'].values()), {})
+                    await db.execute('''
+                        INSERT OR REPLACE INTO courses (id, name, code, description)
+                        VALUES (?, ?, ?, ?)
+                    ''', (
+                        course_id,
+                        course_data['name'],
+                        first_tier.get('code', 'default_code'),
+                        course_data.get('description', '')
+                    ))
+                    
+                    # Insert course tiers
+                    for tier_name, tier_data in course_data.get('tiers', {}).items():
+                        tier_id = f"{course_id}_{tier_name}"
+                        await db.execute('''
+                            INSERT OR REPLACE INTO courses (id, name, code, description)
+                            VALUES (?, ?, ?, ?)
+                        ''', (
+                            tier_id,
+                            f"{course_data['name']} ({tier_data.get('name', '')})",
+                            tier_data.get('code', ''),
+                            f"{course_data.get('description', '')} {tier_data.get('includes', '')}"
+                        ))
+
+            await db.commit()
+            logger.info("Courses loaded successfully from JSON")
+            
+        except Exception as e:
+            logger.error(f"Error loading courses: {str(e)}")
+            raise
+
         logger.info("Database initialization completed")
 
 
@@ -439,48 +562,67 @@ async def test_admin_group(bot: Bot) -> bool:
         return False
 
 
+# Добавляем функцию get_course_name перед get_user_info
+async def get_course_name(course_id: str) -> str:
+    """Получение названия курса по его ID"""
+    try:
+        result = await safe_db_operation('''
+            SELECT name FROM courses 
+            WHERE id = ?
+        ''', (course_id,))
+        
+        if result and len(result) > 0:
+            return result[0][0]  # Первый столбец первой строки
+        return "Неизвестный курс"
+    except Exception as e:
+        logger.error(f"Ошибка при получении названия курса: {e}")
+        return "Неизвестный курс"
+
 @cache_with_timeout(300)  # Кэш на 5 минут
 async def get_user_info(user_id: int) -> str:
-    """Get user info with fancy formatting 🎨"""
+    """Получение информации о пользователе и его курсе"""
+    logger.debug(f"Получение информации о пользователе {user_id}")
     try:
-        logger.debug(f"Получение информации о пользователе {user_id}")
-        async with aiosqlite.connect(DB_PATH) as db:
-            cursor = await safe_db_operation('''
+        # Получаем данные пользователя и курса
+        user_data = await safe_db_operation('''
                 SELECT u.name, uc.course_id, uc.current_lesson, uc.version_id, uc.first_lesson_time
                 FROM users u
                 LEFT JOIN user_courses uc ON u.user_id = uc.user_id
                 WHERE u.user_id = ?
             ''', (user_id,))
-            user_data = await cursor.fetchone()
-        if not user_data:
-            return "❌ Пользователь не найден"
         
-        name, course_id, lesson, version, start_time = user_data
+        # Проверяем, что данные получены
+        if not user_data or len(user_data) == 0:
+            return "❌ Данные пользователя не найдены"
+            
+        # Берем первую запись (может быть несколько курсов)
+        user_info = user_data[0]
         
-        info = f"👤 {name}"
+        # Проверяем, что у пользователя есть курс
+        if len(user_info) < MIN_USER_FIELDS or not user_info[1]:
+            return f"👋 Привет, {user_info[0]}!\n\nУ вас пока нет активных курсов."
+            
+        # Получаем данные о курсе
+        name, course_id, lesson, version_id, first_lesson = user_info
         
-        if course_id:
-            courses = get_courses_data()
-            course_name = courses[course_id]['name']
+        # Форматируем дату начала курса
+        try:
+            first_lesson_dt = datetime.fromisoformat(first_lesson.replace('Z', '+00:00'))
+            first_lesson_formatted = first_lesson_dt.strftime("%d.%m.%Y")
+        except (ValueError, AttributeError):
+            first_lesson_formatted = "неизвестно"
             
-            start_time_str = ""
-            if start_time:
-                dt = datetime.strptime(start_time, '%Y-%m-%d %H:%M:%S')
-                dt = MOSCOW_TZ.localize(dt)
-                start_time_str = f" (начат {format_datetime(dt)})"
-            
-            info += f"\n📚 Курс: {course_name}{start_time_str}"
-            
-            delay = get_lesson_delay()
-            if delay < 60:
-                info += f"\nТестовый режим. Интервал {delay} секунд"
-                
-            info += f"\n📊 Тариф: {version}"
-            info += f"\n📝 Урок: {lesson}"
-        else:
-            info += "\n📚 Курс не активирован"
-            
-        return info
+        # Получаем название курса
+        course_name = await get_course_name(course_id)
+        
+        # Формируем информацию о пользователе
+        return (
+            f"👋 Привет, {name}!\n\n"
+            f"🎓 Курс: {course_name}\n"
+            f"📚 Текущий урок: {lesson}\n"
+            f"🗓 Начало курса: {first_lesson_formatted}\n"
+            f"🔑 Тариф: {version_id}"
+        )
         
     except Exception as e:
         logger.error(f"Ошибка при получении информации: {e}")
@@ -578,8 +720,9 @@ async def cleanup_old_scheduled_files(days: int = 7):
             AND send_at < datetime('now', '-? days')
         ''', (days,))
         logger.info(f"🧹 Очищены старые записи из scheduled_files")
+        
     except Exception as e:
-        logger.error(f"❌ Ошибка при очистке scheduled_files: {e}")
+        logger.error(f"Ошибка очистки scheduled_files: {e}")
 
 
     

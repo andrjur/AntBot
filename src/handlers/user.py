@@ -19,20 +19,27 @@ logger = logging.getLogger(__name__)
 @router.callback_query(F.data == "resend_lesson")
 async def resend_lesson(callback: CallbackQuery, state: FSMContext):
     try:
-        result = await safe_db_operation('''
+        # Получаем данные курса напрямую из safe_db_operation
+        course_data = await safe_db_operation('''
             SELECT course_id, current_lesson
             FROM user_courses
             WHERE user_id = ?
         ''', (callback.from_user.id,))
-        course_data = await result.fetchone()
         
         if not course_data:
             await callback.answer("❌ У вас нет активных курсов")
             return
             
-        course_id, lesson = course_data
+        # Исправляем распаковку - теперь получаем список кортежей
+        if isinstance(course_data, list) and len(course_data) > 0:
+            course_id, lesson = course_data[0]  # Берем первый курс из списка
+        else:
+            await callback.answer("❌ Данные курса не найдены")
+            return
+            
         logger.info(f"User {callback.from_user.id} requesting materials for {course_id}:{lesson}")
         
+        # Остальной код без изменений
         materials = await get_lesson_materials(course_id, lesson)
         if not materials:
             logger.error(f"No materials found for {course_id}:{lesson}")
@@ -105,11 +112,11 @@ async def start_handler(message: Message, state: FSMContext):
         return
         
     try:
-        result = await safe_db_operation('''
+        # Получаем данные курса напрямую
+        has_course = await safe_db_operation('''
             SELECT course_id FROM user_courses 
             WHERE user_id = ?
         ''', (message.from_user.id,))
-        has_course = await result.fetchone()
         
         if not has_course:
             await state.set_state("activation")
@@ -121,8 +128,39 @@ async def start_handler(message: Message, state: FSMContext):
         await message.answer(user_info, reply_markup=markup)
         
     except Exception as e:
-        logger.error(f"Error in start handler: {e}")
+        logger.error(f"Error in start handler: {e}", exc_info=True)
         await message.answer("❌ Произошла ошибка. Попробуйте позже.")
+
+@router.message(F.text, StateFilter("activation"))
+async def process_activation(message: Message, state: FSMContext):
+    try:
+        # Add input validation and proper verification
+        course_code = message.text.strip().lower()
+        if not course_code:
+            await message.answer("⚠️ Пожалуйста, введите корректное кодовое слово")
+            return
+
+        # Правильный порядок аргументов: сначала код, потом user_id
+        success, result = await verify_course_code(course_code, message.from_user.id)
+        if not success:
+            await message.answer(f"❌ {result}. Попробуйте ещё раз:")
+            return
+
+        # Get updated user info with error handling
+        user_info = await get_user_info(message.from_user.id)
+        if isinstance(user_info, tuple):  # Handle possible error tuple
+            raise Exception(user_info[1])
+            
+        markup = create_main_menu()
+        await message.answer(
+            f"✅ Курс активирован!\n\n{user_info}",
+            reply_markup=markup
+        )
+        await state.clear()
+
+    except Exception as e:
+        logger.error(f"Activation error: {str(e)}", exc_info=True)
+        await message.answer("❌ Ошибка активации. Попробуйте позже.")
 
 @router.message(F.text, StateFilter("registration"))
 async def process_registration(message: Message, state: FSMContext):
@@ -136,15 +174,16 @@ async def handle_photo(message: Message):
         state = await get_user_state(message.from_user.id)
         logger.debug(f"Received photo. User state: {state}")
         
-        if not state or state[1] != 'waiting_homework':
+        # Исправляем проверку состояния - первый элемент это state
+        if not state or state[0] != 'waiting_homework':
             logger.debug(f"Ignoring photo - wrong state: {state}")
             return
             
         photo = message.photo[-1]
         success = await submit_homework(
             user_id=message.from_user.id,
-            course_id=state[0],
-            lesson=state[2],
+            course_id=state[1],  # course_id во втором элементе
+            lesson=state[2],     # lesson в третьем элементе
             file_id=photo.file_id,
             bot=message.bot
         )
@@ -153,8 +192,8 @@ async def handle_photo(message: Message):
             await message.reply("✅ Домашняя работа отправлена на проверку!")
             await set_user_state(
                 user_id=message.from_user.id,
+                course_id=state[1],
                 state='waiting_approval',
-                course_id=state[0],
                 lesson=state[2]
             )
         else:
@@ -193,30 +232,3 @@ async def handle_message(message: Message):
     except Exception as e:
         logger.exception(f"Unexpected error for user {message.from_user.id}: {e}")
         # Возможно, стоит предложить пользователю связаться с поддержкой
-
-
-@router.message(F.text, StateFilter("activation"))
-async def process_activation(message: Message, state: FSMContext):
-    try:
-        # Получаем данные курса как кортеж, а не словарь 📦
-        course_data = await verify_course_code(message.text, message.from_user.id)
-        if not course_data:
-            await message.answer("❌ Неверное кодовое слово. Попробуйте ещё раз!")
-            return
-
-        # Достаем данные из кортежа как кролика из шляпы 🎩
-        course_id, course_name = course_data[0], course_data[1]
-        
-        await safe_db_operation('''
-            INSERT INTO user_courses (user_id, course_id, current_lesson)
-            VALUES (?, ?, 1)
-        ''', (message.from_user.id, course_id))
-        
-        await message.answer(
-            f"✅ Курс '{course_name}' активирован!\n"
-            "Приготовьтесь к погружению в мир знаний!",
-            reply_markup=create_main_menu()
-        )        
-    except Exception as e:
-        logger.error(f"Ошибка активации курса: {e}")
-        await message.answer("❌ Что-то пошло не так. Поробуйте позже!")

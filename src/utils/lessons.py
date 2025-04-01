@@ -5,12 +5,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 async def get_lesson_materials(course_id: str, lesson: int):
-    # Исправляем путь как правильную тропинку для муравья 🐜
-    lesson_dir = f"data/courses/{course_id}/lessons/lesson_{lesson}"
+    # Исправляем путь к урокам - у нас lesson{N}, а не lessons/lesson_{N}
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))  # Корень проекта
+    lesson_dir = os.path.join(base_dir, "data", "courses", course_id, f"lesson{lesson}")
+    
+    logger.info(f"Ищем материалы в директории: {lesson_dir}")
     
     materials = []
     try:
-        for filename in os.listdir(lesson_dir):  # Теперь путь верный!
+        # Проверяем, существует ли директория
+        if not os.path.exists(lesson_dir):
+            logger.error(f"Директория урока не найдена: {lesson_dir}")
+            return []
+            
+        for filename in os.listdir(lesson_dir):
             file_path = os.path.join(lesson_dir, filename)
             
             # Skip directories
@@ -28,26 +36,26 @@ async def get_lesson_materials(course_id: str, lesson: int):
                     'content': content,
                     'file_path': file_path
                 })
-                logger.info(f"Loaded text from {file_path}")
+                logger.info(f"Загрузили текст из {file_path}")
                 
             elif ext in ['.jpg', '.jpeg', '.png']:
                 materials.append({
                     'type': 'photo',
                     'file_path': file_path
                 })
-                logger.info(f"Added photo: {file_path}")
+                logger.info(f"Добавили фото: {file_path}")
                 
             elif ext in ['.mp4', '.avi', '.mov']:
                 materials.append({
                     'type': 'video',
                     'file_path': file_path
                 })
-                logger.info(f"Added video: {file_path}")
+                logger.info(f"Добавили видео: {file_path}")
                 
         # Sort materials by filename to maintain order
         materials.sort(key=lambda x: x['file_path'])
         
         return materials
     except Exception as e:
-        logger.error(f"Error loading materials: {e}")
+        logger.error(f"Ошибка загрузки материалов: {e}")
         return []

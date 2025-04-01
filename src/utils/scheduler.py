@@ -87,19 +87,22 @@ async def send_lesson_files(bot: Bot, user_id: int, course_id: str, lesson: int)
 async def check_and_send_lessons(bot: Bot):
     while True:
         try:
-            result = await safe_db_operation('''
+            # Убираем return_cursor=True, т.к. он не поддерживается
+            cursor = await safe_db_operation('''
                 SELECT COUNT(*)
                 FROM homeworks h
                 JOIN user_courses uc ON h.user_id = uc.user_id AND h.course_id = uc.course_id
                 WHERE h.status = 'approved' 
                 AND datetime(h.next_lesson_at) <= datetime('now')
                 AND h.next_lesson_sent = 0
-            ''')
-            count = (await result.fetchone())[0]
+            ''')  # ← Убрали лишний параметр
+            
+            result = await cursor.fetchone()
+            count = result[0] if result else 0
             
             if count > 0:
                 logger.info(f"2000 | Found {count} pending lessons")
-                result = await safe_db_operation('''
+                cursor = await safe_db_operation('''
                     SELECT 
                         h.user_id, 
                         h.course_id, 
@@ -113,9 +116,10 @@ async def check_and_send_lessons(bot: Bot):
                     AND datetime(h.next_lesson_at) <= datetime('now')
                     AND h.next_lesson_sent = 0
                     ORDER BY uc.first_lesson_time ASC, h.lesson ASC
-                ''')
+                ''' 
+                ) 
                 
-                pending_lessons = await result.fetchall()
+                pending_lessons = await cursor.fetchall()
                 
                 for lesson in pending_lessons:
                     user_id, course_id, lesson_num, next_at, first_time, time_diff = lesson
