@@ -1,4 +1,11 @@
-async def add_lesson_from_json(course_id: str, lesson_data: dict):
+from src.utils.db import safe_db_operation
+import logging
+
+logger = logging.getLogger(__name__)
+
+async def get_course_progress(user_id: int, course_id: str):
+    """Получаем прогресс пользователя по курсу 📊"""
+    logger.info(f"4001 | Запрашиваем прогресс для user_id={user_id}, course={course_id} 📈")
     async with aiosqlite.connect(DB_PATH) as db:
         # Add lesson metadata
         await db.execute(

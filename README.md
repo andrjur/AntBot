@@ -134,4 +134,6 @@ c:\Trae\AntBot\data\courses\femininity\
 
 
 
+pytest -v tests/ --html=report.html
 
+python -m src.main         

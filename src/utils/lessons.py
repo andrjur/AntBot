@@ -4,14 +4,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-async def get_lesson_materials(course_id: str, lesson: int) -> list:
-    """Get all materials from lesson directory"""
-    lesson_dir = f"data/courses/{course_id}/lesson{lesson}"
-    materials = []
+async def get_lesson_materials(course_id: str, lesson: int):
+    # Исправляем путь как правильную тропинку для муравья 🐜
+    lesson_dir = f"data/courses/{course_id}/lessons/lesson_{lesson}"
     
+    materials = []
     try:
-        # Get all files from lesson directory
-        for filename in os.listdir(lesson_dir):
+        for filename in os.listdir(lesson_dir):  # Теперь путь верный!
             file_path = os.path.join(lesson_dir, filename)
             
             # Skip directories

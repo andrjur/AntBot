@@ -186,76 +186,50 @@ async def enroll_user_in_course(user_id: int, course_id: str, version_id: str) -
         logger.error(f"Failed to enroll user: {e}")
         return False
 
-async def verify_course_code(code: str, user_id: int) -> tuple[bool, str]:
-    """Verify course activation code and enroll user if valid"""
+async def verify_course_code(code: str, user_id: int):
     try:
-        logger.info(f"🔑 Verifying code '{code}' for user {user_id}")
-        courses = get_courses_data()
+        # Возвращаем данные как кортеж (course_id, name) 📌
+        result = await safe_db_operation('''
+            SELECT c.id, c.name 
+            FROM courses c
+            WHERE c.code = ? AND NOT EXISTS (
+                SELECT 1 FROM user_courses 
+                WHERE user_id = ? AND course_id = c.id
+            )
+        ''', (code, user_id))
         
-        for course_id, course in courses.items():
-            logger.debug(f"📚 Checking course: {course_id}")
-            if not course.get('is_active', True):
-                logger.debug(f"⏸️ Course {course_id} is not active, skipping")
-                continue
-                
-            for version in course.get('versions', []):
-                logger.debug(f"🔍 Checking version {version.get('id')} with code {version.get('code')}")
-                if version.get('code') == code:
-                    logger.info(f"✅ Found matching code for course {course_id}, version {version['id']}")
-                    
-                    # Check if already enrolled
-                    if await check_existing_enrollment(user_id, course_id):
-                        logger.info(f"⚠️ User {user_id} already enrolled in course {course_id}")
-                        return False, None
-                    
-                    # Enroll user
-                    if await enroll_user_in_course(user_id, course_id, version['id']):
-                        logger.info(f"✅ Successfully enrolled user {user_id} in course {course_id}")
-                        return True, course_id
-                    else:
-                        logger.error(f"❌ Failed to enroll user {user_id} in course {course_id}")
-                        return False, None
-        
-        logger.warning(f"❌ No matching code found: {code}")
-        return False, None
-        
+        return await result.fetchone()  # Теперь возвращает кортеж
     except Exception as e:
-        logger.error(f"💥 Critical error in verify_course_code: {e}", exc_info=True)
-        return False, None
+        logger.error(f"💥 Critical error in verify_course_code: {e}")
+        return None
 
 
 
 async def safe_db_operation(query: str, params: tuple = None, fetch_one: bool = False):
-    """Safely execute a database operation with proper error handling"""
-    db = None
-    try:
-        db = await aiosqlite.connect(DB_PATH)
-        cursor = await db.execute(query, params) if params else await db.execute(query)
-        await db.commit()
-        
-        # For SELECT operations, fetch the results before closing
-        if query.strip().upper().startswith("SELECT"):
-            result = await cursor.fetchone() if fetch_one else await cursor.fetchall()
-            await cursor.close()
-            await db.close()
-            return result
-        
-        # For other operations, just close everything
-        await cursor.close()
-        await db.close()
-        return cursor
-        
-    except Exception as e:
-        operation_type = "SELECT" if query.strip().upper().startswith("SELECT") else \
-                        "INSERT" if query.strip().upper().startswith("INSERT") else \
-                        "UPDATE" if query.strip().upper().startswith("UPDATE") else \
-                        "DELETE" if query.strip().upper().startswith("DELETE") else \
-                        "UNKNOWN"
-        
-        logger.error(f"💥 Критическая ошибка БД [{operation_type}]: {e}")
-        if db:
-            await db.close()
-        raise
+    """Безопасное выполнение операций с БД (и никаких фокусов! 🎩)"""
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            cursor = await db.execute(query, params) if params else await db.execute(query)
+            
+            if query.strip().upper().startswith("SELECT"):
+                if fetch_one:
+                    result = await cursor.fetchone()
+                else:
+                    result = await cursor.fetchall()
+                return result
+            
+            await db.commit()
+            return None
+            
+        except Exception as e:
+            operation_type = "SELECT" if query.strip().upper().startswith("SELECT") else \
+                           "INSERT" if query.strip().upper().startswith("INSERT") else \
+                           "UPDATE" if query.strip().upper().startswith("UPDATE") else \
+                           "DELETE" if query.strip().upper().startswith("DELETE") else \
+                           "UNKNOWN"
+            
+            logger.error(f"💥 Критическая ошибка БД [{operation_type}]: {e}")
+            raise
 
 async def get_db_connection():
     global _db_connection

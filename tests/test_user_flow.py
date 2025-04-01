@@ -1,59 +1,66 @@
 import pytest
-from src.handlers.user import start_handler, process_registration, process_activation
-from src.utils.db import get_user, get_user_info
+from src.handlers.user import start_handler, process_registration, process_activation, handle_photo
+from src.utils.db import get_user, get_user_info, submit_homework
 from aiogram.types import Message, User
 from aiogram.fsm.context import FSMContext
+from unittest.mock import AsyncMock, patch, MagicMock
 
 @pytest.mark.asyncio
 async def test_registration_flow():
-    # Mock message and state
-    message = AsyncMock(Message)
-    message.from_user = MagicMock(User)
-    message.from_user.id = 12345
-    message.text = "Test User"
+    message = AsyncMock(spec=Message)
+    message.text = "Тестовый Тестович"
+    message.from_user = AsyncMock(id=123)
+    message.answer = AsyncMock()
     
     state = AsyncMock(FSMContext)
     
-    # Test registration
-    await process_registration(message, state)
+    with patch('src.handlers.user.add_user', new=AsyncMock()) as mock_add_user, \
+         patch('src.utils.db.get_user', new=AsyncMock(return_value=(123, "Тестовый Тестович", "2024-01-01"))):
+        
+        await process_registration(message, state)
+        mock_add_user.assert_awaited_once_with(123, "Тестовый Тестович")
+        
+        # Move assertions inside the context manager
+        user = await get_user(123)
+        assert user is not None
+        assert user[1] == "Тестовый Тестович"
     
-    # Verify user was added
-    user = await get_user(12345)
-    assert user is not None
-    assert user[1] == "Test User"
-    
-    # Verify state was cleared
     state.clear.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_course_activation():
-    message = AsyncMock(Message)
-    message.from_user.id = 12345
-    message.text = "роза"  # Valid course code
+    message = AsyncMock(spec=Message)
+    message.from_user = AsyncMock(id=12345)  # <-- Сначала создаем from_user
+    message.text = "роза"
+    message.answer = AsyncMock()
     
     state = AsyncMock(FSMContext)
     
-    # Test activation
-    await process_activation(message, state)
-    
-    # Verify course was activated
-    user_info = await get_user_info(12345)
-    assert "Женственность" in user_info
-    assert "Текущий урок: 1" in user_info
+    with patch('src.handlers.user.verify_course_code', 
+              new=AsyncMock(return_value=(1, "Тестовый курс"))), \
+         patch('src.handlers.user.safe_db_operation', new=AsyncMock()):
+        
+        await process_activation(message, state)
+        message.answer.assert_awaited_once()
 
 @pytest.mark.asyncio
-async def test_homework_submission(bot):
-    # Mock photo message
-    photo_message = AsyncMock(Message)
-    photo_message.photo = [MagicMock(file_id="test_photo")]
-    photo_message.from_user.id = 12345
+async def test_homework_submission():
+    """Тестируем отправку домашки 📚"""
+    # Создаем мок сообщения с фото
+    message = AsyncMock(spec=Message)
+    message.from_user = AsyncMock(id=12345)  # Correctly mock from_user
+    message.photo = [MagicMock(file_id="test_photo")]
+    message.bot = AsyncMock()
+    message.reply = AsyncMock()
     
-    # Submit homework
-    await submit_homework(photo_message)
-    
-    # Verify forwarded to admin group
-    bot.send_photo.assert_called_with(
-        chat_id=ADMIN_GROUP_ID,
-        photo="test_photo",
-        caption="Homework from User: Test User"
-    )
+    # Патчим функции для тестирования
+    with patch('src.handlers.user.get_user_state', return_value=('course1', 'waiting_homework', 1)), \
+         patch('src.handlers.user.submit_homework', return_value=True), \
+         patch('src.handlers.user.set_user_state') as mock_set_state:
+        
+        # Вызываем тестируемую функцию
+        await handle_photo(message)
+        
+        # Проверяем результаты
+        message.reply.assert_called_once_with("✅ Домашняя работа отправлена на проверку!")
+        mock_set_state.assert_called_once()

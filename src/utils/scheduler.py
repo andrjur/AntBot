@@ -147,3 +147,38 @@ async def schedule_cleanup():
         except Exception as e:
             logger.error(f"Error in cleanup scheduler: {e}")
             await asyncio.sleep(300)  # Wait 5 minutes on error
+
+async def check_next_lessons():
+    """Проверяем следующие уроки (и никаких await без async! 🎯)"""
+    cursor = await safe_db_operation(
+        'YOUR QUERY HERE',
+        params,
+        return_cursor=True  # This will return the cursor instead of the results
+    )
+    result = await cursor.fetchone()
+
+def format_next_lesson_time(interval: str) -> str:
+    """Форматируем время следующего урока (чтобы было красиво 🎨)"""
+    if interval == "7d":
+        return "неделю"
+    if interval == "14d":
+        return "2 недели"
+    days = int(interval.replace('d', ''))
+    hours = days * 24
+    # Правильное склонение для часов
+    if hours % 10 == 1 and hours != 11:
+        return f"{hours} час"
+    elif 2 <= hours % 10 <= 4 and (hours < 10 or hours > 20):
+        return f"{hours} часа"
+    else:
+        return f"{hours} часов"
+
+def parse_next_lesson_time(interval: str) -> datetime:
+    """Парсим время следующего урока (без магии, только математика! 🔢)"""
+    if interval.endswith('d'):
+        days = int(interval[:-1])
+        return datetime.now() + timedelta(days=days)
+    if interval.endswith('w'):
+        weeks = int(interval[:-1])
+        return datetime.now() + timedelta(weeks=weeks)
+    raise ValueError("Неподдерживаемый формат интервала! 😱")

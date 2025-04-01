@@ -126,50 +126,9 @@ async def start_handler(message: Message, state: FSMContext):
 
 @router.message(F.text, StateFilter("registration"))
 async def process_registration(message: Message, state: FSMContext):
-    # Just save the name, no phone number required
     await add_user(message.from_user.id, message.text)
     await state.clear()
     await message.answer("Регистрация завершена! Введите кодовое слово для активации курса:")
-
-@router.message(F.text, StateFilter("activation"))
-async def process_activation(message: Message, state: FSMContext):
-    try:
-        success, course_id = await verify_course_code(message.text, message.from_user.id)
-        
-        if success:
-            courses = get_courses_data()
-            course = courses[course_id]
-            
-            # Send first lesson materials
-            materials = await get_lesson_materials(course_id, 1)
-            if materials:
-                await message.answer(f"✅ Активирован курс '{course['name']}'")
-                
-                for material in materials:
-                    try:
-                        if material['type'] == 'text':
-                            # Use HTML instead of Markdown for better compatibility
-                            text = material['content'].replace('*', '<b>').replace('_', '<i>')
-                            await message.answer(text, parse_mode='HTML')
-                        elif material['type'] == 'photo':
-                            photo = FSInputFile(material['file_path'])
-                            await message.answer_photo(photo)
-                        elif material['type'] == 'video':
-                            video = FSInputFile(material['file_path'])
-                            await message.answer_video(video)
-                    except Exception as e:
-                        logger.error(f"Error sending material: {e}", exc_info=True)
-                        continue
-                        
-                await message.answer("✨ Материалы урока отправлены!")
-            else:
-                await message.answer("❌ Материалы урока не найдены")
-        else:
-            await message.answer("❌ Неверный код активации. Попробуйте еще раз:")
-            
-    except Exception as e:
-        logger.error(f"116 Error in process_activation: {e}", exc_info=True)
-        await message.answer("❌ Произошла ошибка при активации курса. Попробуйте еще раз:")
 
 @router.message(F.photo)
 async def handle_photo(message: Message):
@@ -177,15 +136,14 @@ async def handle_photo(message: Message):
         state = await get_user_state(message.from_user.id)
         logger.debug(f"Received photo. User state: {state}")
         
-        # State tuple is (course_id, state, lesson)
-        if not state or state[1] != 'waiting_homework':  # Changed from state[0]
+        if not state or state[1] != 'waiting_homework':
             logger.debug(f"Ignoring photo - wrong state: {state}")
             return
             
         photo = message.photo[-1]
         success = await submit_homework(
             user_id=message.from_user.id,
-            course_id=state[0],  # Changed from state[1]
+            course_id=state[0],
             lesson=state[2],
             file_id=photo.file_id,
             bot=message.bot
@@ -196,7 +154,7 @@ async def handle_photo(message: Message):
             await set_user_state(
                 user_id=message.from_user.id,
                 state='waiting_approval',
-                course_id=state[0],  # Changed from state[1]
+                course_id=state[0],
                 lesson=state[2]
             )
         else:
@@ -243,3 +201,30 @@ async def handle_message(message: Message):
     except Exception as e:
         logger.exception(f"Unexpected error for user {message.from_user.id}: {e}")
         # Возможно, стоит предложить пользователю связаться с поддержкой
+
+
+@router.message(F.text, StateFilter("activation"))
+async def process_activation(message: Message, state: FSMContext):
+    try:
+        # Получаем данные курса как кортеж, а не словарь 📦
+        course_data = await verify_course_code(message.text, message.from_user.id)
+        if not course_data:
+            await message.answer("❌ Неверное кодовое слово. Попробуйте ещё раз!")
+            return
+
+        # Достаем данные из кортежа как кролика из шляпы 🎩
+        course_id, course_name = course_data[0], course_data[1]
+        
+        await safe_db_operation('''
+            INSERT INTO user_courses (user_id, course_id, current_lesson)
+            VALUES (?, ?, 1)
+        ''', (message.from_user.id, course_id))
+        
+        await message.answer(
+            f"✅ Курс '{course_name}' активирован!\n"
+            "Приготовьтесь к погружению в мир знаний!",
+            reply_markup=create_main_menu()
+        )        
+    except Exception as e:
+        logger.error(f"Ошибка активации курса: {e}")
+        await message.answer("❌ Что-то пошло не так. Поробуйте позже!")

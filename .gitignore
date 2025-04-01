@@ -48,6 +48,8 @@ coverage.xml
 *.cover
 *.py,cover
 .hypothesis/
+# Test database
+test_bot.db
 .pytest_cache/
 cover/
 

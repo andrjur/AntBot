@@ -10,21 +10,23 @@ import pytz
 from src.utils.db import DB_PATH, safe_db_operation, get_courses_data, get_next_lesson, get_pending_homeworks
 from src.config import get_lesson_delay, is_test_mode, TEST_MODE, extract_delay_from_filename
 from src.keyboards.user import get_main_keyboard  # Переносим импорт наверх
+import logging
+from src.utils.db import safe_db_operation
 
-# Создаем роутер и логгер - наших верных помощников! 🎯
-router = Router()
 logger = logging.getLogger(__name__)
-
+router = Router()  # Добавляем создание роутера
+logger.info('3001 | handlers/admin.py роутер создан 🎮')
 
 @router.callback_query(F.data == "admin_test")
 async def handle_admin_test(callback: CallbackQuery):
+    logger.info('3002 | Начинаем админ-тест 🎯')
     try:
         await callback.message.edit_text(
             "✅ Связь с админской группой подтверждена!\n"
             "Бот готов к работе."
         )
         await callback.answer()
-        logger.info(f"1007 | Админ {callback.from_user.id} подтвердил работу бота")
+        logger.info(f"3003 | Админ {callback.from_user.id} подтвердил работу бота 🎉")
     except Exception as e:
         logger.error(f"Error in admin test callback: {e}")
         await callback.answer("❌ Ошибка", show_alert=True)
@@ -294,3 +296,47 @@ def parse_callback_data(callback_data: str) -> tuple[int, str, int]:
     except (ValueError, IndexError) as e:
         logger.error(f"Failed to parse callback data: {callback_data}, error: {e}")
         raise ValueError(f"Invalid callback data format: {callback_data}")
+
+
+async def get_course_statistics(course_id: str) -> str:
+    """Получаем статистику по курсу (для админов, которые любят цифры 📊)"""
+    try:
+        result = await safe_db_operation('''
+            SELECT 
+                COUNT(DISTINCT user_id) as total_users,
+                AVG(current_lesson) as avg_lesson,
+                MAX(current_lesson) as max_lesson
+            FROM user_courses 
+            WHERE course_id = ?
+        ''', (course_id,), fetch_one=True)
+        
+        if not result:
+            return "Статистика недоступна 📉"
+            
+        total, avg, max_lesson = result
+        return f"""
+Статистика по курсу:
+👥 Всего учеников: {total}
+📚 Средний урок: {round(avg, 1)}
+🎯 Максимальный урок: {max_lesson}
+"""
+    except Exception as e:
+        logger.error(f"Ошибка при получении статистики: {e}")
+        return "Произошла ошибка при получении статистики 😢"
+
+
+@router.message(Command("stats"))
+async def show_course_stats(message: Message):
+    """Показываем статистику по курсам 📊"""
+    try:
+        courses = get_courses_data()
+        stats_text = "📊 Статистика по курсам:\n\n"
+        
+        for course_id in courses:
+            course_stats = await get_course_statistics(course_id)
+            stats_text += f"🎓 Курс {course_id}:\n{course_stats}\n"
+            
+        await message.answer(stats_text)
+    except Exception as e:
+        logger.error(f"Ошибка при показе статистики: {e}")
+        await message.answer("❌ Не удалось получить статистику")

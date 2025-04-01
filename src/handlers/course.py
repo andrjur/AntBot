@@ -8,9 +8,12 @@ async def handle_start(message: Message):
     """Handle /start command"""
     user_id = message.from_user.id
     
-    # Get user info and display it
-    info = await get_user_info(user_id)
-    await message.answer(info)
+    # Получаем инфу о пользователе через нормальный мок
+    user_info = await get_user_info(user_id)
+    if not user_info:
+        return await message.answer("Пользователь не найден! 😢")
+    
+    await message.answer(f"Привет, {user_info['name']}! 👋")
     
     # Get current course and lesson
     course_id = "femininity_premium"  # Get from user_courses table
