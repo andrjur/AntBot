@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import json
 import logging
+from .models import MediaCache as MediaCacheModel  # Нужно добавить модель
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,11 @@ class MediaCache:
 
     async def get_media_id(self, file_path: str, bot) -> str:
         """Get file_id from cache or upload new file"""
+        async with AsyncSessionFactory() as session:
+            cached = await session.execute(
+                select(MediaCacheModel)
+                .where(MediaCacheModel.file_path == file_path)
+            )
         abs_path = Path(file_path)
         
         if not abs_path.exists():

@@ -1,12 +1,17 @@
 import pytest
 from src.handlers.user import start_handler, process_registration, process_activation, handle_photo
-from src.utils.db import get_user, get_user_info, submit_homework
+# Change from:
+# from src.utils.db import get_user_info
+# To:
+from src.utils.requests import get_user_info
 from aiogram.types import Message, User
 from aiogram.fsm.context import FSMContext
 from unittest.mock import AsyncMock, patch, MagicMock
+from aiogram.types import Message
+from conftest import db_session  # Используем общую фикстуру
 
 @pytest.mark.asyncio
-async def test_registration_flow():
+async def test_registration_flow(db_session):  # Теперь используем общую сессию
     message = AsyncMock(spec=Message)
     message.text = "Тестовый Тестович"
     message.from_user = AsyncMock(id=123)
@@ -48,26 +53,34 @@ async def test_course_activation():
         message.answer.assert_awaited_once()
 
 @pytest.mark.asyncio
-async def test_homework_submission():
+async def test_homework_submission(mock_message):
     """Тестируем отправку домашки 📚"""
-    # Создаем мок сообщения с фото
-    message = AsyncMock(spec=Message)
-    message.from_user = AsyncMock(id=12345)  # Correctly mock from_user
-    message.photo = [MagicMock(file_id="test_photo")]
-    message.bot = AsyncMock()
-    message.reply = AsyncMock()
+    # Настраиваем мок сообщения
+    mock_message.photo = [MagicMock(file_id="test_photo")]
+    mock_message.document = None
+    
+    # Импортируем модуль здесь, чтобы патчи применились правильно
+    import src.handlers.homework
     
     # Патчим функции для тестирования
-    with patch('src.handlers.user.get_user_state', return_value=('course1', 'waiting_homework', 1)), \
-         patch('src.handlers.user.submit_homework', return_value=True), \
-         patch('src.handlers.user.set_user_state') as mock_set_state:
+    with patch('src.utils.db.get_user_state', return_value=('course1', 'waiting_homework', 1)), \
+         patch('src.utils.db.submit_homework', return_value=1), \
+         patch('src.utils.db.set_user_state') as mock_set_state, \
+         patch('src.utils.db.get_admin_ids', return_value=[1, 2]), \
+         patch('src.keyboards.markup.create_main_menu') as mock_create_menu:
         
         # Вызываем тестируемую функцию
-        await handle_photo(message)
+        await src.handlers.homework.handle_homework(mock_message)
         
         # Проверяем результаты
-        message.reply.assert_called_once_with("✅ Домашняя работа отправлена на проверку!")
+        mock_message.reply.assert_called_once()
+        assert "отправлено на проверку" in mock_message.reply.call_args[0][0]
+        
+        # Проверяем, что состояние пользователя было обновлено
         mock_set_state.assert_called_once()
+        
+        # Проверяем, что было показано основное меню
+        mock_message.answer.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -89,11 +102,14 @@ async def test_handle_message_error_handling():
         )
 
 
-# В верхней части файла исправляем импорт
+# Удаляем ненужное:
+# from src.utils.requests import get_user_info  # Этот беглец нам не нужен
+
+# Оставляем только используемые импорты
 from src.handlers.user import (
     start_handler, 
-    process_registration, 
-    process_activation, 
+    process_registration,
+    process_activation,
     handle_photo,
     handle_message  # ← Добавляем забытого ёжика 🦔
 )

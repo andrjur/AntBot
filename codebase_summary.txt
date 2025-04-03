@@ -1,0 +1,843 @@
+📄 C:\Trae\AntBot\all_defs.py [импортов: 1, функций: 4]
+    import os
+
+    def is_excluded_directory(path, exclude_dirs=None):
+
+    def extract_file_metadata(file_path):
+
+    def get_codebase_summary(path, exclude_dirs=None):
+
+    def main():
+
+
+
+📄 C:\Trae\AntBot\conftest.py [импортов: 1, функций: 0]
+    import os, sys, pytest
+
+    async def db_session():
+
+
+
+📄 C:\Trae\AntBot\setup.py [импортов: 1, функций: 0]
+    from setuptools import setup, find_packages
+
+
+
+📄 C:\Trae\AntBot\alembic\env.py [импортов: 7, функций: 2]
+    from logging.config import fileConfig
+    from sqlalchemy import engine_from_config
+    from sqlalchemy import pool
+    from alembic import context
+    import sys
+    import os
+    from src.models import Base
+
+    def run_migrations_offline():
+
+    def run_migrations_online():
+
+
+
+📄 C:\Trae\AntBot\alembic\versions\40f368a8f801_initial_migration.py [импортов: 2, функций: 2]
+    from alembic import op
+    import sqlalchemy as sa
+
+    def upgrade():
+
+    def downgrade():
+
+
+
+📄 C:\Trae\AntBot\data\db_old.py [импортов: 18, функций: 4]
+    import json
+    import aiosqlite
+    import os
+    import logging
+    from datetime import datetime, timedelta
+    import pytz
+    import locale
+    import asyncio
+    from aiosqlite import Error as SQLiteError
+    from src.config import ADMIN_GROUP_ID, get_lesson_delay
+    from aiogram import Bot
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from src.utils.course_cache import get_courses_data
+    from functools import wraps
+    from typing import Any, Callable
+    from src.utils.courses import get_lesson_files
+    from src.utils.db_context import get_db, DB_PATH
+    from src.utils.text_processor import format_datetime  # Add this import
+
+    async def get_db_connection():
+
+    async def close_db_connection():
+
+    async def get_active_courses_states(user_id: int):
+
+    async def submit_homework(user_id: int, course_id: str, lesson: int, file_id: str, bot: Bot = None):
+
+    def cache_with_timeout(timeout_seconds: int = 300):
+
+    def decorator(func: Callable) -> Callable:
+
+    def wrapper(*args, **kwargs) -> Any:
+
+    def get_courses_data():
+
+    async def check_existing_enrollment(user_id: int, course_id: str) -> bool:
+
+    async def enroll_user_in_course(user_id: int, course_id: str, version_id: str) -> bool:
+
+    async def verify_course_code(code: str, user_id: int) -> tuple[bool, str]:
+
+    async def safe_db_operation(query: str, params: tuple = None, fetch_one: bool = False):
+
+    async def get_db_connection():
+
+    async def close_db_connection():
+
+    async def get_user(user_id: int):
+
+    async def get_user_state(user_id: int) -> tuple[str, str, int]:
+
+    async def set_user_state(user_id: int, state: str, course_id: str = None, lesson: int = None) -> bool:
+
+    async def add_user(user_id: int, name: str) -> bool:
+
+    async def init_db():
+
+    async def test_admin_group(bot: Bot) -> bool:
+
+    async def get_user_info(user_id: int) -> str:
+
+    async def verify_course_enrollment(db, user_id: int, course_id: str) -> tuple[str, str, str]:
+
+    async def notify_admins_with_retry(bot: Bot, file_id: str, user_data: dict, markup: InlineKeyboardMarkup,
+
+    async def get_pending_homeworks() -> list:
+
+    async def get_next_lesson(user_id: int, course_id: str) -> int:
+
+    async def cleanup_old_scheduled_files(days: int = 7):
+
+
+
+📄 C:\Trae\AntBot\src\config.py [импортов: 3, функций: 4]
+    import os
+    import re
+    from dotenv import load_dotenv
+
+    def is_test_mode():
+
+    def get_lesson_delay():
+
+    def extract_delay_from_filename(filename: str) -> int:
+
+    def no_get_file_delay(minutes: int) -> int:
+
+
+
+📄 C:\Trae\AntBot\src\main.py [импортов: 10, функций: 1]
+    import os, sys, json, asyncio, logging
+    from aiogram import Bot, Dispatcher
+    from src.utils.db import init_db, test_admin_group, async_session
+    from src.config import BOT_TOKEN
+    from src.utils.scheduler import check_and_send_lessons
+    from src.handlers import user, admin
+    from logging.handlers import RotatingFileHandler
+    from src.utils.models import Base
+    from src.utils.session import engine
+
+    def check_single_instance():
+
+    async def validate_media_cache(bot: Bot):
+
+    async def init_models():
+
+    async def main():
+    from src.utils.cache import shutdown
+
+
+
+📄 C:\Trae\AntBot\src\__init__.py [импортов: 0, функций: 0]
+
+
+
+📄 C:\Trae\AntBot\src\handlers\admin.py [импортов: 18, функций: 1]
+    from src.keyboards.admin import get_hw_review_kb
+    from src.keyboards.user import get_main_keyboard
+    from src.utils.db import (
+    from src.config import (
+    from aiogram import Router, F, Bot  # Added Bot to imports
+    from aiogram.filters import Command
+    from aiogram.types import Message, CallbackQuery
+    import os
+    import glob
+    import logging
+    from datetime import datetime
+    import pytz
+    from src.utils.db import safe_db_operation
+    from src.utils.requests import (
+    from src.utils.session import DATABASE_URL  # Теперь все знают, где база
+    from src.utils.course_service import get_course_progress
+    from src.utils.session import DATABASE_URL  # Или вообще убираем, если не используется
+
+    def parse_callback_data(callback_data: str) -> tuple[int, str, int]:
+
+    async def handle_admin_test(callback: CallbackQuery):
+
+    async def approve_homework(callback: CallbackQuery, bot: Bot):  # Добавляем bot в параметры
+    from src.keyboards.user import get_main_keyboard  # Добавить импорт вверху файла
+
+    async def reject_homework(callback: CallbackQuery, bot):
+
+    async def show_progress(message: Message):
+
+    async def process_homework_status(user_id: int, course_id: str, lesson: int, status: str, admin_id: int) -> bool:
+
+    async def show_pending_homeworks(callback: CallbackQuery):
+
+    async def show_other_homeworks(callback: CallbackQuery, bot: Bot):
+
+    async def get_course_statistics(course_id: str) -> str:
+
+    async def show_course_stats(message: Message):
+
+
+
+📄 C:\Trae\AntBot\src\handlers\course.py [импортов: 5, функций: 0]
+    import asyncio
+    from aiogram.types import Message
+    from src.utils.scheduler import send_lesson_files
+    from src.utils.courses import get_lesson_files
+    from src.utils.db import get_user_info
+
+    async def handle_start(message: Message):
+
+
+
+📄 C:\Trae\AntBot\src\handlers\homework.py [импортов: 14, функций: 0]
+    from aiogram import Router, F, Bot
+    from aiogram.types import Message, CallbackQuery, FSInputFile
+    import logging
+    import os
+    import pytz
+    import random
+    from datetime import datetime
+    import glob
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.state import State, StatesGroup
+    from src.utils.db import (
+    from src.config import get_lesson_delay, extract_delay_from_filename
+    from src.keyboards.admin import get_hw_review_kb, get_rejection_reasons_kb
+    from src.keyboards.markup import create_main_menu
+
+    async def handle_homework(message: Message, bot: Bot):
+
+    async def approve_homework(callback: CallbackQuery, bot: Bot):
+
+    async def reject_homework_start(callback: CallbackQuery, state: FSMContext, bot: Bot):
+
+    async def process_rejection_reason(callback: CallbackQuery, state: FSMContext, bot: Bot):
+
+    async def process_custom_rejection_comment(message: Message, state: FSMContext, bot: Bot):
+
+    async def reject_homework_with_comment(user_id, course_id, lesson, admin_id, comment, image_key=None,
+
+    async def view_other_homeworks(callback: CallbackQuery, bot: Bot):
+
+
+
+📄 C:\Trae\AntBot\src\handlers\user.py [импортов: 10, функций: 0]
+    from aiogram import Router, F
+    from aiogram.types import Message, CallbackQuery, FSInputFile
+    from aiogram.filters import Command, StateFilter
+    import logging
+    from aiogram.fsm.context import FSMContext
+    from src.utils.requests import (  # Измененный импорт
+    from src.keyboards.user import get_main_keyboard  # Добавили импорт клавиатуры
+    from src.utils.lessons import get_lesson_materials
+    from src.utils.db import safe_db_operation  # Устаревший импорт
+    from src.utils.text_processor import process_markdown_simple
+
+    async def resend_lesson(callback: CallbackQuery, state: FSMContext):
+
+    async def start_handler(message: Message, state: FSMContext):
+
+    async def process_activation(message: Message, state: FSMContext):
+
+    async def process_registration(message: Message, state: FSMContext):
+
+    async def handle_photo(message: Message):
+
+    async def handle_message(message: Message):
+
+
+
+📄 C:\Trae\AntBot\src\handlers\__init__.py [импортов: 0, функций: 0]
+
+
+
+📄 C:\Trae\AntBot\src\keyboards\admin.py [импортов: 1, функций: 5]
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    def get_hw_review_kb(user_id, course_id, lesson):
+
+    def get_rejection_reasons_kb():
+
+    def get_admin_main_kb():
+
+    def get_course_management_kb():
+
+    def get_user_management_kb():
+
+
+
+📄 C:\Trae\AntBot\src\keyboards\markup.py [импортов: 1, функций: 1]
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+
+    def create_main_menu(course_id=None):
+
+
+
+📄 C:\Trae\AntBot\src\keyboards\user.py [импортов: 1, функций: 3]
+    from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+
+    def get_main_keyboard() -> ReplyKeyboardMarkup:
+
+    def get_other_homeworks_kb(course_id: str, lesson: int) -> InlineKeyboardMarkup:
+
+    def get_lesson_navigation_kb(course_id: str, current_lesson: int, total_lessons: int) -> InlineKeyboardMarkup:
+
+
+
+📄 C:\Trae\AntBot\src\keyboards\__init__.py [импортов: 0, функций: 0]
+
+
+
+📄 C:\Trae\AntBot\src\services\lessons.py [импортов: 0, функций: 0]
+
+    async def get_lesson_materials(course_id: str, lesson: int) -> list[dict]:
+
+
+
+📄 C:\Trae\AntBot\src\services\scheduler.py [импортов: 2, функций: 0]
+    from datetime import datetime
+    import logging
+
+    async def schedule_lessons():
+
+
+
+📄 C:\Trae\AntBot\src\utils\admin_utils.py [импортов: 3, функций: 0]
+    import os
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    import logging
+
+    async def forward_homework_to_admins(message, user_info):
+
+
+
+📄 C:\Trae\AntBot\src\utils\cache.py [импортов: 9, функций: 3]
+    from datetime import datetime, timedelta
+    import asyncio
+    from typing import Dict, Tuple
+    import logging
+    from functools import wraps
+    import time
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.orm import sessionmaker
+
+    async def get_instance(cls):
+
+    async def init(self):
+
+    async def _periodic_update(self):
+
+    async def _update_stats(self):
+
+    async def get_stats(self, course_id: str, lesson: int) -> Dict:
+
+    def cache_with_timeout(seconds):
+
+    def decorator(func):
+
+    def wrapper(*args, **kwargs):
+
+    async def shutdown():
+
+    async def close(self):
+
+
+
+📄 C:\Trae\AntBot\src\utils\codes.py [импортов: 3, функций: 0]
+    from sqlalchemy import select, update
+    from .models import ActivationCode, UsedCode
+    from .db import safe_db_operation
+
+    async def is_code_used(code: str) -> bool:
+
+    async def _check(session, code):
+
+    async def verify_activation_code(code: str, user_id: int) -> tuple[bool, str]:
+
+    async def _verify(session, code, user_id):
+
+
+
+📄 C:\Trae\AntBot\src\utils\courses.py [импортов: 7, функций: 2]
+    import re
+    import json
+    import os
+    import logging
+    from datetime import datetime, timedelta
+    from src.config import extract_delay_from_filename
+    from src.utils.course_cache import get_courses_data  # ✅ Правильно
+
+    def verify_code(code: str) -> tuple[bool, str, str]:
+
+    def get_lesson_files(course_id: str, lesson_number: int) -> list[dict]:
+
+
+
+📄 C:\Trae\AntBot\src\utils\course_cache.py [импортов: 3, функций: 1]
+    import json
+    import logging
+    import os
+
+    def get_courses_data() -> dict:
+
+
+
+📄 C:\Trae\AntBot\src\utils\course_service.py [импортов: 2, функций: 0]
+    from src.utils.db import safe_db_operation
+    import logging
+
+    async def get_course_progress(user_id: int, course_id: str):
+
+
+
+📄 C:\Trae\AntBot\src\utils\db.py [импортов: 11, функций: 1]
+    import logging, asyncio
+    from datetime import datetime, timedelta
+    from typing import Optional, List, Tuple
+    from functools import wraps  # Add this import at the top
+    from sqlalchemy import select, update, delete, func
+    from sqlalchemy.exc import SQLAlchemyError
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from aiogram import Bot
+    from aiogram.types import InlineKeyboardMarkup
+    from .models import User, UserCourse, Course, Homework, ScheduledFile
+    from .session import AsyncSessionFactory  # Update this import
+
+    async def verify_course_enrollment(
+
+    async def notify_admins_with_retry(
+
+    async def get_pending_homeworks(session: AsyncSession) -> list[Homework]:
+
+    async def get_next_lesson(session: AsyncSession, user_id: int, course_id: str) -> int:
+
+    async def cleanup_old_scheduled_files(session: AsyncSession, days: int = 7) -> int:
+
+    def safe_db_operation(func):
+
+    async def wrapper(*args, **kwargs):
+
+    async def get_user_count(session: AsyncSession) -> int:
+
+    async def get_db_session() -> AsyncSession:
+
+
+
+📄 C:\Trae\AntBot\src\utils\db_context.py [импортов: 3, функций: 0]
+    import aiosqlite
+    from contextlib import asynccontextmanager
+    import logging
+
+    async def get_db():
+
+
+
+📄 C:\Trae\AntBot\src\utils\lessons.py [импортов: 3, функций: 0]
+    import os
+    import aiofiles
+    import logging
+
+    async def get_lesson_materials(course_id: str, lesson: int):
+
+    async def add_lesson_to_course(course_id: str, lesson_data: dict):
+
+
+
+📄 C:\Trae\AntBot\src\utils\media_cache.py [импортов: 5, функций: 3]
+    import os
+    from pathlib import Path
+    import json
+    import logging
+    from .models import MediaCache as MediaCacheModel  # Нужно добавить модель
+
+    def __init__(self):
+
+    def _load_cache(self):
+
+    def _save_cache(self):
+
+    async def get_media_id(self, file_path: str, bot) -> str:
+
+
+
+📄 C:\Trae\AntBot\src\utils\message_builder.py [импортов: 0, функций: 2]
+
+    def build_welcome_message(name: str) -> str:
+
+    def build_help_message() -> str:
+
+
+
+📄 C:\Trae\AntBot\src\utils\models.py [импортов: 2, функций: 0]
+    from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey
+    from sqlalchemy.orm import declarative_base, relationship
+
+
+
+📄 C:\Trae\AntBot\src\utils\requests.py [импортов: 14, функций: 1]
+    from sqlalchemy import select, update, delete, func
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from .models import User, Course, UserCourse, Homework
+    from datetime import datetime
+    import logging
+    from src.utils.courses import verify_code  # Добавляем этот импорт
+    from sqlalchemy.exc import SQLAlchemyError
+    from .models import UserCourse
+    from .session import AsyncSessionFactory
+    from typing import List  # Для аннотации типов
+
+    async def get_pending_homeworks(session: AsyncSession) -> List[Homework]:
+
+    async def add_user(session: AsyncSession, user_id: int, name: str) -> bool:
+
+    async def get_user(session: AsyncSession, user_id: int):
+
+    async def enroll_user_in_course(session: AsyncSession, user_id: int, course_id: str, version_id: str) -> bool:
+
+    async def submit_homework(session: AsyncSession, user_id: int, course_id: str, lesson: int, file_id: str) -> bool:
+
+    async def get_user_info(session: AsyncSession, user_id: int) -> str:
+
+    async def verify_course_code(code: str, user_id: int) -> tuple[bool, str]:
+
+    async def set_user_state(session: AsyncSession, user_id: int, state: str) -> bool:
+    from sqlalchemy import select
+    from .models import User, UserCourse
+
+    async def get_user_info(user_id: int):
+    from functools import wraps
+    from sqlalchemy.exc import SQLAlchemyError
+
+    def safe_db_operation(func):
+
+    async def wrapper(*args, **kwargs):
+
+
+
+📄 C:\Trae\AntBot\src\utils\scheduler.py [импортов: 12, функций: 2]
+    import asyncio
+    import logging
+    import pytz
+    import os
+    import re
+    from datetime import datetime, timedelta
+    from aiogram import Bot
+    from .session import DATABASE_URL  # Хотя скорее всего можно вообще убрать
+    from .requests import safe_db_operation  # Or move this function to requests.py
+    from src.config import extract_delay_from_filename  # Оставить абсолютным
+    import aiosqlite
+    from aiogram.types import FSInputFile  # Добавить импорт
+
+    async def send_file(bot: Bot, user_id: int, file_path: str):
+
+    async def send_lesson_files(bot: Bot, user_id: int, course_id: str, lesson: int):
+
+    async def check_and_send_lessons(bot: Bot):
+
+    async def schedule_cleanup():
+
+    async def check_next_lessons():
+
+    def format_next_lesson_time(interval: str) -> str:
+
+    def parse_next_lesson_time(interval: str) -> datetime:
+
+
+
+📄 C:\Trae\AntBot\src\utils\session.py [импортов: 3, функций: 0]
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.orm import sessionmaker
+    from .models import Base
+
+    async def init_db():
+
+
+
+📄 C:\Trae\AntBot\src\utils\text_processor.py [импортов: 1, функций: 3]
+    import re
+
+    def process_markdown_simple(text: str) -> str:
+
+    def process_markdown(text: str) -> str:
+
+    def format_datetime(dt):
+
+
+
+📄 C:\Trae\AntBot\src\utils\__init__.py [импортов: 0, функций: 0]
+
+
+
+📄 C:\Trae\AntBot\tests\conftest.py [импортов: 14, функций: 11]
+    import sys, os, pytest, pytest_asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from aiogram import Bot, Dispatcher
+    from aiogram.fsm.storage.memory import MemoryStorage
+    import aiosqlite
+    from pathlib import Path
+    from datetime import datetime, timedelta
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from src.utils.models import Base
+
+    async def setup_db():
+    from src.utils import db
+
+    async def mock_get_session():
+    from src.utils import db
+
+    async def mock_get_db():
+
+    async def mock_safe_db_operation(query, params=None, fetch_all=False, fetch_one=False):
+
+    async def mock_init_db(test_mode=False):
+
+    def mock_bot():
+
+    def mock_message():
+
+    def callback_mock():
+
+    def message_mock(mock_message):
+
+    def bot(mock_bot):
+
+    def state_mock():
+
+    def mock_datetime_now(monkeypatch):
+
+    def now(cls, *args, **kwargs):
+
+    def patch_test_db():
+
+    async def mock_select_operation(setup_db):
+
+    def patch_homework_handler():
+
+    async def mock_handle_homework(message):
+
+    def patch_db_module():
+    from src.utils import db
+
+    async def get_admin_ids():
+
+    async def submit_homework(user_id, course_id, lesson, file_id):
+
+    async def get_user_state(user_id):
+
+    async def set_user_state(user_id, course_id, state, lesson=None):
+
+    async def get_next_lesson(course_id, current_lesson):
+
+    async def db_session():
+
+
+
+📄 C:\Trae\AntBot\tests\test_admin_flow.py [импортов: 5, функций: 0]
+    import pytest
+    from unittest.mock import AsyncMock, patch, ANY
+    from aiogram.types import CallbackQuery
+    from src.handlers.admin import approve_homework, reject_homework
+    from src.keyboards.user import get_main_keyboard
+
+    async def test_approve_homework(callback_mock, bot):
+
+    async def test_reject_homework(callback_mock, bot):
+
+
+
+📄 C:\Trae\AntBot\tests\test_cache.py [импортов: 2, функций: 0]
+    import pytest
+    from src.utils.cache import StatsCache
+
+    async def test_stats_cache_update(db_session):
+
+
+
+📄 C:\Trae\AntBot\tests\test_course.py [импортов: 4, функций: 0]
+    import pytest
+    from unittest.mock import AsyncMock, patch
+    from aiogram.types import Message
+    from src.handlers.course import handle_start
+
+    async def test_handle_start(message_mock):
+
+    async def test_handle_course_start(message_mock, bot):
+
+
+
+📄 C:\Trae\AntBot\tests\test_db.py [импортов: 8, функций: 0]
+    from src.utils.models import User, UserCourse  # Исправляем импорт
+    from src.utils.db import safe_db_operation
+    import pytest
+    from datetime import datetime, timedelta
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from src.utils.requests import get_user_info
+    from src.utils.courses import verify_course_enrollment
+    from src.utils.models import User, UserCourse, Course
+
+    async def test_select_operation(setup_db):
+
+    async def test_insert_and_select(setup_db):
+
+    async def test_get_user_info(setup_db, async_session: AsyncSession):
+
+    async def test_verify_course_enrollment(setup_db, async_session: AsyncSession):
+
+
+
+📄 C:\Trae\AntBot\tests\test_keyboards.py [импортов: 3, функций: 4]
+    import pytest
+    from src.keyboards.markup import create_main_menu
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    def test_create_main_menu_without_course():
+
+    def test_create_main_menu_with_course():
+
+    def test_button_properties():
+
+    def test_callback_data_format():
+
+
+
+📄 C:\Trae\AntBot\tests\test_lessons.py [импортов: 7, функций: 1]
+    import pytest
+    from unittest.mock import patch, mock_open
+    from src.utils.lessons import get_lesson_materials
+    from unittest.mock import AsyncMock, patch, mock_open, MagicMock
+    import aiofiles
+    import os
+    from src.utils.lessons import get_lesson_materials
+
+    async def __aenter__(self):
+
+    async def __aexit__(self, *args):
+
+    async def read(self):  # Добавляем асинхронный метод чтения
+
+    async def test_get_lesson_materials():
+
+    def side_effect_splitext(filename):
+
+    async def test_get_lesson_materials_empty():
+
+    async def test_get_lesson_materials_error():
+
+
+
+📄 C:\Trae\AntBot\tests\test_message_builder.py [импортов: 2, функций: 2]
+    import pytest
+    from src.utils.message_builder import build_welcome_message, build_help_message
+
+    def test_build_welcome_message():
+
+    def test_build_help_message():
+
+
+
+📄 C:\Trae\AntBot\tests\test_scheduler.py [импортов: 6, функций: 0]
+    import pytest
+    from datetime import datetime, timedelta
+    from src.utils.scheduler import format_next_lesson_time, parse_next_lesson_time
+    from src.services.scheduler import schedule_lessons
+    from src.config import extract_delay_from_filename, TEST_MODE, TEST_FILE_DELAY
+    from unittest.mock import AsyncMock, patch, MagicMock
+
+    async def test_format_next_lesson_time():
+
+    async def test_extract_delay_from_filename():
+
+    async def test_parse_next_lesson_time():
+
+    async def test_schedule_lessons():
+
+
+
+📄 C:\Trae\AntBot\tests\test_text_processor.py [импортов: 3, функций: 3]
+    import pytest
+    from src.utils.text_processor import process_markdown_simple, process_markdown, format_datetime
+    from datetime import datetime
+
+    def test_process_markdown_simple():
+
+    def test_process_markdown():
+
+    def test_format_datetime():
+
+
+
+📄 C:\Trae\AntBot\tests\test_user_flow.py [импортов: 10, функций: 0]
+    import pytest
+    from src.handlers.user import start_handler, process_registration, process_activation, handle_photo
+    from src.utils.requests import get_user_info
+    from aiogram.types import Message, User
+    from aiogram.fsm.context import FSMContext
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from aiogram.types import Message
+    from conftest import db_session  # Используем общую фикстуру
+
+    async def test_registration_flow(db_session):  # Теперь используем общую сессию
+
+    async def test_course_activation():
+
+    async def test_homework_submission(mock_message):
+    import src.handlers.homework
+
+    async def test_handle_message_error_handling():
+    from src.handlers.user import (
+
+
+
+📄 C:\Trae\AntBot\tests\test_user_handlers.py [импортов: 8, функций: 1]
+    import pytest
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from aiogram.types import Message, CallbackQuery
+    from aiogram.fsm.context import FSMContext
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from src.handlers.user import start_handler,  process_registration,  process_activation
+    from src.keyboards.user import get_main_keyboard
+    from src.utils.requests import add_user, verify_course_code
+
+    def db_session():
+
+    async def test_registration_success(message_mock, state_mock, db_session):
+
+    async def test_activation_success(message_mock, state_mock, db_session):
+
+    async def test_activation_failure(message_mock, state_mock, db_session):
+
+
+
+📄 C:\Trae\AntBot\tests\__init__.py [импортов: 0, функций: 0]
+
+

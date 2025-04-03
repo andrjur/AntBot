@@ -1,4 +1,8 @@
 from src.keyboards.admin import get_hw_review_kb
+from src.keyboards.user import get_main_keyboard
+from src.utils.db import safe_db_operation,  get_next_lesson, get_pending_homeworks
+from src.utils.course_cache import get_courses_data  # ✅ Правильно
+from src.config import  get_lesson_delay,  is_test_mode,   TEST_MODE,   extract_delay_from_filename
 from aiogram import Router, F, Bot  # Added Bot to imports
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
@@ -7,13 +11,25 @@ import glob
 import logging
 from datetime import datetime
 import pytz
-from src.utils.db import DB_PATH, safe_db_operation, get_courses_data, get_next_lesson, get_pending_homeworks
-from src.config import get_lesson_delay, is_test_mode, TEST_MODE, extract_delay_from_filename
-from src.keyboards.user import get_main_keyboard  # Переносим импорт наверх
-import logging
-from src.utils.db import safe_db_operation
+from src.utils.db import safe_db_operation, get_pending_homeworks
+from src.config import DB_PATH  # Import DB_PATH from config instead
+#from src.utils.requests import  approve_homework,  reject_homework,  get_pending_homeworks
+from src.utils.course_service import get_course_progress
+
 
 logger = logging.getLogger(__name__)
+
+def parse_callback_data(callback_data: str) -> tuple[int, str, int]:
+    """Parse callback data in format 'hw_approve_user_id_course_id_lesson'"""
+    try:
+        _, _, user_id, course_id, lesson = callback_data.split('_')
+        return int(user_id), course_id, int(lesson)
+    except (ValueError, IndexError) as e:
+        logger.error(f"Failed to parse callback data: {callback_data}, error: {e}")
+        raise ValueError(f"Invalid callback data format: {callback_data}")
+
+
+
 router = Router()  # Добавляем создание роутера
 logger.info('3001 | handlers/admin.py роутер создан 🎮')
 
@@ -288,14 +304,7 @@ async def show_other_homeworks(callback: CallbackQuery, bot: Bot):
         logger.error(f"Error showing other homeworks: {e}", exc_info=True)
         await callback.answer("❌ Ошибка при загрузке работ", show_alert=True)
 
-def parse_callback_data(callback_data: str) -> tuple[int, str, int]:
-    """Parse callback data in format 'hw_approve_user_id_course_id_lesson'"""
-    try:
-        _, _, user_id, course_id, lesson = callback_data.split('_')
-        return int(user_id), course_id, int(lesson)
-    except (ValueError, IndexError) as e:
-        logger.error(f"Failed to parse callback data: {callback_data}, error: {e}")
-        raise ValueError(f"Invalid callback data format: {callback_data}")
+
 
 
 async def get_course_statistics(course_id: str) -> str:
@@ -340,3 +349,38 @@ async def show_course_stats(message: Message):
     except Exception as e:
         logger.error(f"Ошибка при показе статистики: {e}")
         await message.answer("❌ Не удалось получить статистику")
+
+
+@router.callback_query(F.data.startswith("hw_"))
+async def handle_hw_review(callback: CallbackQuery):
+    action, user_id, course_id, lesson = callback.data.split("_")[1:]
+    
+    async with AsyncSessionFactory() as session:
+        # Находим ДЗ
+        hw = await session.execute(
+            select(Homework).where(
+                Homework.user_id == user_id,
+                Homework.course_id == course_id,
+                Homework.lesson == lesson
+            )
+        )
+        hw = hw.scalar()
+        
+        if not hw:
+            await callback.answer("ДЗ не найдено! Возможно, уже проверено.")
+            return
+            
+        if action == "approve":
+            hw.status = "approved"
+            await schedule_next_lesson(user_id, course_id, lesson + 1)
+            await callback.message.edit_text(
+                f"✅ ДЗ одобрено! Следующий урок запланирован."
+            )
+        else:
+            hw.status = "rejected"
+            await callback.message.edit_text(
+                f"❌ ДЗ отклонено. Ожидаем исправленную версию."
+            )
+        
+        await session.commit()
+        await callback.answer()

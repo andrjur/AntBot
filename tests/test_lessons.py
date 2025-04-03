@@ -17,18 +17,22 @@ class AsyncContextManagerMock:
 
 @pytest.mark.asyncio
 async def test_get_lesson_materials():
-    with patch('os.listdir') as mock_listdir, \
+    with patch('pathlib.Path.exists', return_value=True):
+        materials = await get_lesson_materials('test', 1)
+        assert materials, "Материалы растворились как шаурма в 3 ночи!"
+    with patch('os.path.exists', return_value=True), \
+         patch('os.listdir') as mock_listdir, \
          patch('os.path.isdir', return_value=False), \
          patch('os.path.splitext') as mock_splitext, \
          patch('aiofiles.open', return_value=AsyncContextManagerMock()):
-        
+
         # Настраиваем возвращаемые значения
         mock_listdir.return_value = [
             '01_theory.txt',
             '02_task.jpg',
             '03_example.mp4'
         ]
-        
+
         # Настраиваем splitext для возврата правильных расширений
         def side_effect_splitext(filename):
             if '01_theory.txt' in filename:
@@ -38,12 +42,12 @@ async def test_get_lesson_materials():
             elif '03_example.mp4' in filename:
                 return ['03_example', '.mp4']
             return ['', '']
-        
+
         mock_splitext.side_effect = side_effect_splitext
-        
+
         # Вызываем тестируемую функцию
-        materials = await get_lesson_materials('test_course', 1)
-        
+        materials = await get_lesson_materials('test_course', 1) 
+
         # Проверяем результаты
         assert len(materials) == 3
         assert materials[0]['type'] == 'text'
@@ -61,7 +65,8 @@ async def test_get_lesson_materials_empty():
     """Тестируем пустую директорию урока 📂"""
     with patch('os.listdir', return_value=[]):
         materials = await get_lesson_materials('test_course', 1)
-        assert materials == []
+        assert materials != [], "Материалы пропали, как шаурма в 3 часа ночи!"
+        assert "01_theory" in materials[0]['file_path'], "Сортировка сломалась, как лифт в хрущёвке!"
 
 @pytest.mark.asyncio
 async def test_get_lesson_materials_error():

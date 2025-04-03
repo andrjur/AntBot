@@ -5,8 +5,14 @@ import os
 import re
 from datetime import datetime, timedelta
 from aiogram import Bot
-from src.utils.db import DB_PATH, safe_db_operation, cleanup_old_scheduled_files
-from src.config import extract_delay_from_filename  # Changed from get_file_delay
+# Change from:
+# from .db import DB_PATH, safe_db_operation
+# To:
+# Было: from .session import DB_PATH
+# Стало:
+from .session import DATABASE_URL  # Хотя скорее всего можно вообще убрать
+from .requests import safe_db_operation  # Or move this function to requests.py
+from src.config import extract_delay_from_filename  # Оставить абсолютным
 import aiosqlite
 from aiogram.types import FSInputFile  # Добавить импорт
 
@@ -87,22 +93,22 @@ async def send_lesson_files(bot: Bot, user_id: int, course_id: str, lesson: int)
 async def check_and_send_lessons(bot: Bot):
     while True:
         try:
-            # Убираем return_cursor=True, т.к. он не поддерживается
-            cursor = await safe_db_operation('''
+            # First get count of pending lessons
+            count_result = await safe_db_operation('''
                 SELECT COUNT(*)
                 FROM homeworks h
                 JOIN user_courses uc ON h.user_id = uc.user_id AND h.course_id = uc.course_id
                 WHERE h.status = 'approved' 
                 AND datetime(h.next_lesson_at) <= datetime('now')
                 AND h.next_lesson_sent = 0
-            ''')  # ← Убрали лишний параметр
+            ''', fetch_one=True)  # Changed to fetch_one
             
-            result = await cursor.fetchone()
-            count = result[0] if result else 0
+            count = count_result[0] if count_result else 0
             
             if count > 0:
                 logger.info(f"2000 | Found {count} pending lessons")
-                cursor = await safe_db_operation('''
+                # Get the actual lessons data
+                lessons = await safe_db_operation('''
                     SELECT 
                         h.user_id, 
                         h.course_id, 
@@ -116,12 +122,9 @@ async def check_and_send_lessons(bot: Bot):
                     AND datetime(h.next_lesson_at) <= datetime('now')
                     AND h.next_lesson_sent = 0
                     ORDER BY uc.first_lesson_time ASC, h.lesson ASC
-                ''' 
-                ) 
+                ''', fetch_all=True)  # Changed to fetch_all
                 
-                pending_lessons = await cursor.fetchall()
-                
-                for lesson in pending_lessons:
+                for lesson in lessons:
                     user_id, course_id, lesson_num, next_at, first_time, time_diff = lesson
                     try:
                         await send_lesson_files(bot, user_id, course_id, lesson_num)
@@ -134,8 +137,8 @@ async def check_and_send_lessons(bot: Bot):
                     except Exception as e:
                         logger.error(f"2000.5 | Failed to send lesson: {e}", exc_info=True)
                     
-                    logger.info("2000.6 | Scheduler Check Completed")
-                    
+                logger.info("2000.6 | Scheduler Check Completed")
+                
         except Exception as e:
             logger.error(f"2000.7 | Scheduler error: {e}", exc_info=True)
             

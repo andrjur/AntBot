@@ -62,3 +62,8 @@ if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN not found in .env")
 if not ADMIN_GROUP_ID:
     raise ValueError("ADMIN_GROUP_ID not found in .env")
+
+
+# Проверить что DB_PATH существует
+if not os.path.exists(os.path.dirname(DB_PATH)):
+    os.makedirs(os.path.dirname(DB_PATH))

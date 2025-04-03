@@ -4,7 +4,7 @@ import os
 import logging
 from datetime import datetime, timedelta
 from src.config import extract_delay_from_filename
-from src.utils.course_cache import get_courses_data  # Changed import
+from src.utils.course_cache import get_courses_data  # ✅ Правильно
 
 logger = logging.getLogger(__name__)
 
